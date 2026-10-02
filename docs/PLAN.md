@@ -99,19 +99,45 @@ ends depends only on the machine, never on the host.
 - [x] M1 native reference: the `chimera` feature builds; TestApp's UIKit
   screen draws through the host Mesa; machine time is exactly 1 s per 60
   frames; two runs are byte-identical; a tap navigates.
-- [ ] M2 guest build: dynarmic, openal-soft and touchHLE through the musl
-  guest toolchain; core.wbx; native and sandbox agree.
-- [ ] M3 filesystem: the app's Documents/Library/tmp in machine memory, so
-  saves are part of a savestate; save-data export.
+- [x] M2 guest build (`waterbox/build-guest.sh`): cargo -Z build-std for
+  `guest/waterbox-guest.json` (Ruffle's target: no red zone, no native TLS),
+  the cc/cmake crates handed the guest kit's compilers through their
+  `CC_waterbox_guest`/`CMAKE_TOOLCHAIN_FILE_waterbox_guest` variables, thread
+  locals defined away; linked with the guest Mesa and the C++ kit's libstdc++
+  and libgcc_eh. check-wbx clean. `waterbox/run-wbx.c` runs it as the engine
+  does and prints run-native's lines. TestApp: native and sandbox digests
+  identical over 300 frames; a tap, a savestate round trip before every frame
+  (85 MB a state) and a state moved to a fresh host all end on the same
+  picture; the CLI suite passes 105/105 in both, output identical.
+- [x] M3 filesystem (patch 0003): Documents, Library/{Preferences,Caches} and
+  tmp exist only in memory (`FileLocation::Memory`), directories list in name
+  order (a BTreeMap in this build). Save-data export/import is still to do.
 - [ ] M4 sound: OpenAL Soft rendered a frame at a time (loopback), its mixer
   choice pinned.
-- [ ] M5 savestates: rerecord and cross-process legs.
+- [ ] M5 savestates: the rerecord and session runs work (above); make them
+  gate legs on real games.
 - [ ] M6 package, gate, settings; games from the user.
+
+### An app that exits (2026-10-02)
+
+Upstream ends the process when an app calls `exit()` or UIKit terminates it;
+in a sandbox that is the guest dying. Patch 0004 instead stops the machine
+where it stands (`chimera::exit_machine`): the core reports it is not running
+and keeps the last picture.
+
+### The patch series
+
+Patches are written with `waterbox/make-patch.py`, never with a bare
+`git diff`: the baseline is HEAD plus the patches before, so a file two
+patches touch does not end up in both. `--amend NNNN` rewrites a patch from
+the tree (its files only).
 
 ## Open questions
 
-- Directory listings come from a HashMap (`FsNode::Directory.children`): the
-  order an app sees is seeded per process natively. To be fixed with M3.
+- Rust's HashMap seeds come from getrandom: a fixed stream in the sandbox,
+  fresh randomness natively. Any HashMap order that reaches the app would
+  make native and sandbox differ (the gate would show it). Touch events and
+  directory listings are already ordered.
 - OpenAL Soft runs a mixer thread with a real backend; the loopback device
   should avoid it. Check its event thread.
 - Rust panics: the Ruffle core builds the guest `panic = "abort"`; touchHLE's

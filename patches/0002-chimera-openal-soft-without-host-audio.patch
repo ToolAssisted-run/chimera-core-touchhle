@@ -1,0 +1,82 @@
+diff --git a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -34,7 +34,7 @@
+ sdl = ["dep:sdl2", "dep:sdl2-sys"]
+ # Chimera's build: a machine driven a frame at a time, on a virtual clock, with
+ # an OpenGL compiled into the core (src/chimera/). Build it without "sdl".
+-chimera = []
++chimera = ["touchHLE_openal_soft_wrapper/chimera"]
+ 
+ # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+ 
+diff --git a/src/audio/openal_soft_wrapper/Cargo.toml b/src/audio/openal_soft_wrapper/Cargo.toml
+--- a/src/audio/openal_soft_wrapper/Cargo.toml
++++ b/src/audio/openal_soft_wrapper/Cargo.toml
+@@ -16,4 +16,7 @@
+ cmake = { workspace = true }
+ 
+ [features]
+-static = []
+\ No newline at end of file
++static = []
++# Chimera's build: OpenAL Soft with no host audio at all (the core mixes
++# through a loopback device), and the same mixer on every CPU.
++chimera = []
+diff --git a/src/audio/openal_soft_wrapper/build.rs b/src/audio/openal_soft_wrapper/build.rs
+--- a/src/audio/openal_soft_wrapper/build.rs
++++ b/src/audio/openal_soft_wrapper/build.rs
+@@ -48,6 +48,44 @@
+         build.define("ALSOFT_NO_CONFIG_UTIL", "ON");
+         build.define("ALSOFT_EXAMPLES", "OFF");
+ 
++        // Chimera's build has no host audio: the core renders through a
++        // loopback device a frame at a time. So no backend is built (nothing
++        // probes the host for one), and the mixer is the baseline SSE2 one
++        // every x86-64 has - OpenAL Soft otherwise picks SSE3/SSE4.1 mixers
++        // at run time by the CPU it finds, and the same sound must come out
++        // on every machine.
++        if cfg!(feature = "chimera") {
++            for backend in [
++                "ALSA",
++                "OSS",
++                "PIPEWIRE",
++                "SOLARIS",
++                "SNDIO",
++                "WINMM",
++                "DSOUND",
++                "WASAPI",
++                "PORTAUDIO",
++                "PULSEAUDIO",
++                "JACK",
++                "COREAUDIO",
++                "OPENSL",
++                "OBOE",
++                "SDL2",
++                "WAVE",
++            ] {
++                build.define(format!("ALSOFT_BACKEND_{backend}"), "OFF");
++            }
++            build.define("ALSOFT_CPUEXT_SSE3", "OFF");
++            build.define("ALSOFT_CPUEXT_SSE4_1", "OFF");
++            build.define("ALSOFT_CPUEXT_NEON", "OFF");
++            build.define("ALSOFT_RTKIT", "OFF");
++            build.define("ALSOFT_DLOPEN", "OFF");
++            build.define("ALSOFT_INSTALL_HRTF_DATA", "OFF");
++            build.define("ALSOFT_INSTALL_AMBDEC_PRESETS", "OFF");
++            build.define("ALSOFT_INSTALL_CONFIG", "OFF");
++            build.define("ALSOFT_UPDATE_BUILD_VERSION", "OFF");
++        }
++
+         let openal_soft_out = build.build();
+ 
+         link_search(&openal_soft_out.join("lib"));
+@@ -55,7 +93,7 @@
+         link_search(&openal_soft_out.join("lib64"));
+ 
+         // Some dependencies of OpenAL Soft.
+-        if os.eq_ignore_ascii_case("linux") {
++        if os.eq_ignore_ascii_case("linux") && !cfg!(feature = "chimera") {
+             // OpenAL on Linux depends on sndio, needs to be dynamically linked
+             println!("cargo:rustc-link-lib=dylib=sndio");
+         }

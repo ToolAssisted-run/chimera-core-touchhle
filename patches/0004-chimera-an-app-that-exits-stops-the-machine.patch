@@ -1,0 +1,66 @@
+diff --git a/src/chimera/mod.rs b/src/chimera/mod.rs
+--- a/src/chimera/mod.rs
++++ b/src/chimera/mod.rs
+@@ -98,7 +98,8 @@
+     }
+     let machine = s.machine.as_mut().expect("the machine is not made");
+     match machine.resume(()) {
+-        CoroutineResult::Yield(()) => None,
++        // a frame ended - or the app exited (exit_machine) and never will again
++        CoroutineResult::Yield(()) => s.exited.clone(),
+         CoroutineResult::Return(result) => {
+             // An app that exits mid-frame still ends that frame.
+             s.frame += 1;
+@@ -134,6 +135,26 @@
+     }
+ }
+ 
++/// The app exited (`exit()`, or UIKit's termination): upstream ends the
++/// process; here the machine stops where it stands, its last picture kept,
++/// and the core is told so. It is never resumed. Called from wherever the app
++/// exits, which is usually a guest thread's stack: the jump back to the core
++/// is made from the machine's own stack, as every frame's is.
++pub(crate) fn exit_machine(env: &mut Environment, code: i32) -> ! {
++    let s = state();
++    s.exited = Some(match code {
++        0 => Ok(()),
++        _ => Err(format!("the app exited with status {code}")),
++    });
++    s.frame += 1;
++    if env.window.is_none() {
++        // headless (no frames to stop at): as upstream
++        std::process::exit(code);
++    }
++    env.on_parent_stack_in_coroutine(|_, _| unsafe { (*state().yielder).suspend(()) });
++    unreachable!("a machine whose app exited was resumed");
++}
++
+ fn end_frame(env: &mut Environment) {
+     let s = state();
+     s.frame += 1;
+diff --git a/src/frameworks/uikit/ui_application.rs b/src/frameworks/uikit/ui_application.rs
+--- a/src/frameworks/uikit/ui_application.rs
++++ b/src/frameworks/uikit/ui_application.rs
+@@ -482,6 +482,9 @@
+         let _: () = msg![env; pool drain];
+     };
+ 
++    #[cfg(feature = "chimera")]
++    crate::chimera::exit_machine(env, 0);
++    #[cfg(not(feature = "chimera"))]
+     std::process::exit(0);
+ }
+ 
+diff --git a/src/libc/stdlib.rs b/src/libc/stdlib.rs
+--- a/src/libc/stdlib.rs
++++ b/src/libc/stdlib.rs
+@@ -319,6 +319,9 @@
+     set_errno(env, 0);
+ 
+     echo!("App called exit(), exiting.");
++    #[cfg(feature = "chimera")]
++    crate::chimera::exit_machine(env, exit_code);
++    #[cfg(not(feature = "chimera"))]
+     std::process::exit(exit_code);
+ }
+ 

@@ -66,7 +66,7 @@ def clang(output, sources, extra):
 # 1. the symbols touchHLE implements
 symbols = os.path.join(stubs, 'SYMBOLS.txt')
 subprocess.run([args.touchhle, '--dump=symbols', '--dump-file=' + symbols, '--headless'],
-               check=True, capture_output=True)
+               check=True, capture_output=True, cwd=out)  # its log file lands there
 
 # 2. one stub source per library: a "// /path" comment starts a library, and
 #    further comments before any body are other names for it

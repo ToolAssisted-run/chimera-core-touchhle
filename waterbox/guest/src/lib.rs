@@ -64,6 +64,9 @@ pub struct Settings {
     pub start_date: u64,
     /// The CPU clock, Hz.
     pub cpu_hz: u64,
+    /// Arguments for the app itself (what follows touchHLE's --args). Not a
+    /// setting the package declares: the gate passes TestApp --cli-tests.
+    pub app_args: Vec<String>,
 }
 
 impl Settings {
@@ -72,6 +75,7 @@ impl Settings {
             options: Vec::new(),
             start_date: 946_684_800, // 2000-01-01
             cpu_hz: 412_000_000,
+            app_args: Vec::new(),
         };
         for (key, value) in flat_json(json)? {
             match key.as_str() {
@@ -100,6 +104,7 @@ impl Settings {
                         .ok_or_else(|| format!("cpuMHz: {value:?} is not a clock"))?;
                     s.cpu_hz = mhz * 1_000_000;
                 }
+                "appArgs" => s.app_args = value.split_whitespace().map(String::from).collect(),
                 "languages" => {
                     if !value.is_empty() {
                         s.options.push(format!("--preferred-languages={value}"))
@@ -197,6 +202,10 @@ pub fn start(bundle_path: &str, settings: &Settings) -> Result<(), String> {
     chimera::check_bundle(bundle_path)?;
     let mut args = vec!["touchHLE".to_string(), bundle_path.to_string()];
     args.extend(settings.options.iter().cloned());
+    if !settings.app_args.is_empty() {
+        args.push("--args".to_string());
+        args.extend(settings.app_args.iter().cloned());
+    }
     chimera::boot(args);
     let c = core();
     c.audio = vec![0; AUDIO_PAIRS_PER_FRAME * 2];
@@ -304,8 +313,14 @@ pub extern "C" fn GetFrameCount() -> u64 {
     chimera::frame_count()
 }
 
-/// Machine time, nanoseconds: what the gate compares between flavors before
-/// it compares pictures.
+/// Instructions the machine has executed: what the gate compares between
+/// flavors first.
+#[no_mangle]
+pub extern "C" fn GetExecutedTicks() -> u64 {
+    touchHLE::time::ticks()
+}
+
+/// Machine time, nanoseconds.
 #[no_mangle]
 pub extern "C" fn GetMachineTimeNs() -> u64 {
     touchHLE::time::now_ns()

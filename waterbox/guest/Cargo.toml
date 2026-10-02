@@ -22,3 +22,8 @@ touchHLE = { path = "../../extern/touchHLE", default-features = false, features 
 [profile.release]
 opt-level = 2
 debug = 1
+# A panic in the guest is a crash: abort, so the sandbox reports it (miniBox
+# hands the guest's last words to the frontend). touchHLE's catch_unwind paths
+# only exist to print crash reports. Profiles apply only when this crate is
+# the root, so the native reference keeps unwinding.
+panic = "abort"

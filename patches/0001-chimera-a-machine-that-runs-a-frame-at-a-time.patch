@@ -32,7 +32,6 @@ index 7243a149..6a8c2725 100644
  touchHLE_openal_soft_wrapper = { path = "src/audio/openal_soft_wrapper" }
 diff --git a/src/chimera/mod.rs b/src/chimera/mod.rs
 new file mode 100644
-index 00000000..bcdc8035
 --- /dev/null
 +++ b/src/chimera/mod.rs
 @@ -0,0 +1,149 @@
@@ -187,7 +186,6 @@ index 00000000..bcdc8035
 +}
 diff --git a/src/chimera/resources.rs b/src/chimera/resources.rs
 new file mode 100644
-index 00000000..5c2572b1
 --- /dev/null
 +++ b/src/chimera/resources.rs
 @@ -0,0 +1,62 @@
@@ -255,10 +253,9 @@ index 00000000..5c2572b1
 +}
 diff --git a/src/chimera/time.rs b/src/chimera/time.rs
 new file mode 100644
-index 00000000..3f241441
 --- /dev/null
 +++ b/src/chimera/time.rs
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,221 @@
 +/*
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -303,6 +300,12 @@ index 00000000..3f241441
 +/// Set the wall-clock date the machine starts at. Only before it starts.
 +pub fn set_epoch(since_unix_epoch: Duration) {
 +    unsafe { EPOCH = since_unix_epoch };
++}
++
++/// Instructions executed since the machine started: the finest measure of how
++/// far it got, and the first thing to compare between two runs.
++pub fn ticks() -> u64 {
++    unsafe { TICKS }
 +}
 +
 +/// Nanoseconds of machine time since the machine started.
@@ -476,10 +479,9 @@ index 00000000..3f241441
 +}
 diff --git a/src/chimera/window.rs b/src/chimera/window.rs
 new file mode 100644
-index 00000000..36b8e73a
 --- /dev/null
 +++ b/src/chimera/window.rs
-@@ -0,0 +1,650 @@
+@@ -0,0 +1,654 @@
 +/*
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -569,6 +571,8 @@ index 00000000..36b8e73a
 +    }
 +}
 +
++// upstream's whole set, though only touches are made here
++#[allow(dead_code)]
 +#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 +pub enum FingerId {
 +    Mouse,
@@ -1038,6 +1042,7 @@ index 00000000..36b8e73a
 +    }
 +
 +    /// Get the size in pixels of the window without rotation or scaling.
++    #[allow(dead_code)]
 +    pub fn size_unrotated_unscaled(&self) -> (u32, u32) {
 +        self.device_family.portrait_size()
 +    }
@@ -1049,6 +1054,7 @@ index 00000000..36b8e73a
 +        (0, 0, w, h)
 +    }
 +
++    #[allow(dead_code)]
 +    pub fn viewport_y_offset(&self) -> u32 {
 +        0
 +    }
@@ -1131,10 +1137,9 @@ index 00000000..36b8e73a
 +    vec!["US".to_string()]
 +}
 diff --git a/src/environment.rs b/src/environment.rs
-index 131c45d6..680f4e61 100644
 --- a/src/environment.rs
 +++ b/src/environment.rs
-@@ -17,6 +17,7 @@ use crate::audio::openal::OpenALManager;
+@@ -17,6 +17,7 @@
  use crate::cpu::Cpu;
  use crate::libc::semaphore::sem_t;
  use crate::mem::{GuestUSize, MutPtr, MutVoidPtr};
@@ -1142,7 +1147,7 @@ index 131c45d6..680f4e61 100644
  use crate::{
      abi, bundle, cpu, dyld, frameworks, fs, gdb, image, libc, mach_o, mem, objc, options, stack,
      window,
-@@ -25,7 +26,7 @@ use std::cell::Cell;
+@@ -25,7 +26,7 @@
  use std::collections::{HashMap, HashSet, VecDeque};
  use std::net::TcpListener;
  use std::rc::Rc;
@@ -1151,7 +1156,7 @@ index 131c45d6..680f4e61 100644
  
  use crate::libc::pthread::cond::pthread_cond_t;
  use crate::libc::stdio::FILE;
-@@ -1426,6 +1427,11 @@ impl Environment {
+@@ -1426,6 +1427,11 @@
                  // Polling for events can be quite expensive, so we shouldn't do
                  // this until after we've done some amount of work on the guest
                  // thread, lest every single callback call pay this cost.
@@ -1163,7 +1168,7 @@ index 131c45d6..680f4e61 100644
                  if let Some(ref mut window) = self.window {
                      window.poll_for_events(&self.options);
                  }
-@@ -1647,9 +1653,19 @@ impl Environment {
+@@ -1647,9 +1653,19 @@
                  .remaining_ticks
                  .is_none_or(|remaining_ticks| remaining_ticks > 0)
              {
@@ -1183,7 +1188,7 @@ index 131c45d6..680f4e61 100644
  
                  match self.handle_cpu_state(state) {
                      ThreadNextAction::Continue => {
-@@ -1855,6 +1871,11 @@ impl Environment {
+@@ -1855,6 +1871,11 @@
              if let Some(next_awakening) = next_awakening {
                  let duration = next_awakening.duration_since(Instant::now());
                  log_dbg!("All threads blocked/asleep, sleeping for {:?}.", duration);
@@ -1196,7 +1201,6 @@ index 131c45d6..680f4e61 100644
                  // Try again, there should be some thread awake now (or
                  // there will be soon, since timing is approximate).
 diff --git a/src/frameworks/audio_toolbox/audio_components.rs b/src/frameworks/audio_toolbox/audio_components.rs
-index 4f0e4ad6..fa00d0ce 100644
 --- a/src/frameworks/audio_toolbox/audio_components.rs
 +++ b/src/frameworks/audio_toolbox/audio_components.rs
 @@ -5,8 +5,8 @@
@@ -1210,7 +1214,6 @@ index 4f0e4ad6..fa00d0ce 100644
  use crate::abi::GuestFunction;
  use crate::audio::openal::al_types::ALuint;
 diff --git a/src/frameworks/audio_toolbox/audio_unit.rs b/src/frameworks/audio_toolbox/audio_unit.rs
-index ea88f560..fed1dbc1 100644
 --- a/src/frameworks/audio_toolbox/audio_unit.rs
 +++ b/src/frameworks/audio_toolbox/audio_unit.rs
 @@ -7,7 +7,7 @@
@@ -1223,10 +1226,9 @@ index ea88f560..fed1dbc1 100644
  use crate::audio::openal::al_types::{ALuint, ALvoid};
  use crate::audio::openal::{AL_BUFFERS_PROCESSED, AL_PLAYING, AL_SOURCE_STATE};
 diff --git a/src/frameworks/core_animation.rs b/src/frameworks/core_animation.rs
-index 2e9b52ad..9d05f032 100644
 --- a/src/frameworks/core_animation.rs
 +++ b/src/frameworks/core_animation.rs
-@@ -22,8 +22,8 @@ pub use composition::recomposite_if_necessary;
+@@ -22,8 +22,8 @@
  
  use crate::dyld::{export_c_func, FunctionExports};
  use crate::frameworks::core_foundation::time::CFTimeInterval;
@@ -1237,10 +1239,9 @@ index 2e9b52ad..9d05f032 100644
  pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
      // Core Animation is considered its own framework, but it technically lives
 diff --git a/src/frameworks/core_animation/composition.rs b/src/frameworks/core_animation/composition.rs
-index 84706130..248ae576 100644
 --- a/src/frameworks/core_animation/composition.rs
 +++ b/src/frameworks/core_animation/composition.rs
-@@ -23,8 +23,9 @@ use crate::image::Image;
+@@ -23,8 +23,9 @@
  use crate::matrix::Matrix;
  use crate::mem::SafeWrite;
  use crate::objc::{id, msg, msg_class, nil, ObjC};
@@ -1252,10 +1253,9 @@ index 84706130..248ae576 100644
  #[derive(Default)]
  pub(super) struct State {
 diff --git a/src/frameworks/core_foundation/time.rs b/src/frameworks/core_foundation/time.rs
-index 1378dd8e..b0429a6e 100644
 --- a/src/frameworks/core_foundation/time.rs
 +++ b/src/frameworks/core_foundation/time.rs
-@@ -11,9 +11,10 @@ use crate::frameworks::foundation::NSTimeInterval;
+@@ -11,9 +11,10 @@
  use crate::libc::time::{time_t, timestamp_to_calendar_date};
  use crate::mem::SafeRead;
  use crate::objc::nil;
@@ -1268,10 +1268,9 @@ index 1378dd8e..b0429a6e 100644
  /// Seconds between Unix and Apple's epochs
  pub const SECS_FROM_UNIX_TO_APPLE_EPOCHS: u64 = 978_307_200;
 diff --git a/src/frameworks/foundation/ns_date.rs b/src/frameworks/foundation/ns_date.rs
-index 160378ad..50f73170 100644
 --- a/src/frameworks/foundation/ns_date.rs
 +++ b/src/frameworks/foundation/ns_date.rs
-@@ -16,8 +16,9 @@ use crate::objc::{
+@@ -16,8 +16,9 @@
  };
  
  use crate::frameworks::foundation::ns_keyed_unarchiver::decode_current_date;
@@ -1283,10 +1282,9 @@ index 160378ad..50f73170 100644
  #[derive(Default)]
  pub(super) struct NSDateHostObject {
 diff --git a/src/frameworks/foundation/ns_process_info.rs b/src/frameworks/foundation/ns_process_info.rs
-index c95dbd1b..bc14090b 100644
 --- a/src/frameworks/foundation/ns_process_info.rs
 +++ b/src/frameworks/foundation/ns_process_info.rs
-@@ -9,8 +9,8 @@ use super::NSTimeInterval;
+@@ -9,8 +9,8 @@
  use crate::frameworks::foundation::ns_string;
  use crate::libc::mach::host::PHYSICAL_MEMORY;
  use crate::objc::{id, msg, msg_class, objc_classes, ClassExports};
@@ -1297,10 +1295,9 @@ index c95dbd1b..bc14090b 100644
  #[derive(Default)]
  pub struct State {
 diff --git a/src/frameworks/foundation/ns_property_list_serialization.rs b/src/frameworks/foundation/ns_property_list_serialization.rs
-index d4107df8..804dfb9d 100644
 --- a/src/frameworks/foundation/ns_property_list_serialization.rs
 +++ b/src/frameworks/foundation/ns_property_list_serialization.rs
-@@ -195,7 +195,10 @@ fn deserialize_plist(
+@@ -195,7 +195,10 @@
          }
          Value::Date(date_val) => {
              let time: SystemTime = (*date_val).into();
@@ -1312,7 +1309,7 @@ index d4107df8..804dfb9d 100644
              let date: id = msg_class![env; NSDate alloc];
              msg![env; date initWithTimeIntervalSinceReferenceDate:time_interval]
          }
-@@ -310,7 +313,7 @@ fn serialize_plist(env: &mut Environment, plist: id) -> Value {
+@@ -310,7 +313,7 @@
      } else if class == env.objc.get_known_class("NSDate", &mut env.mem) {
          let date = env.objc.borrow::<NSDateHostObject>(plist);
          let time = apple_epoch().add(Duration::from_secs_f64(date.time_interval));
@@ -1322,10 +1319,9 @@ index d4107df8..804dfb9d 100644
          unimplemented!("class {}", env.objc.get_class_name(class))
      }
 diff --git a/src/frameworks/foundation/ns_run_loop.rs b/src/frameworks/foundation/ns_run_loop.rs
-index f473e095..24bf7f9a 100644
 --- a/src/frameworks/foundation/ns_run_loop.rs
 +++ b/src/frameworks/foundation/ns_run_loop.rs
-@@ -23,9 +23,10 @@ use crate::mem::MutPtr;
+@@ -23,9 +23,10 @@
  use crate::objc::{
      id, msg, msg_send, nil, objc_classes, release, retain, Class, ClassExports, HostObject, SEL,
  };
@@ -1338,10 +1334,9 @@ index f473e095..24bf7f9a 100644
  /// `NSString*`
  pub type NSRunLoopMode = id;
 diff --git a/src/frameworks/foundation/ns_timer.rs b/src/frameworks/foundation/ns_timer.rs
-index 68fc992d..de141085 100644
 --- a/src/frameworks/foundation/ns_timer.rs
 +++ b/src/frameworks/foundation/ns_timer.rs
-@@ -12,8 +12,9 @@ use crate::objc::{
+@@ -12,8 +12,9 @@
      autorelease, id, msg, msg_class, msg_send, nil, objc_classes, release, retain, ClassExports,
      HostObject, SEL,
  };
@@ -1353,10 +1348,9 @@ index 68fc992d..de141085 100644
  struct NSTimerHostObject {
      ns_interval: NSTimeInterval,
 diff --git a/src/frameworks/media_player/movie_player.rs b/src/frameworks/media_player/movie_player.rs
-index 63a782f5..5d0166c3 100644
 --- a/src/frameworks/media_player/movie_player.rs
 +++ b/src/frameworks/media_player/movie_player.rs
-@@ -12,9 +12,10 @@ use crate::objc::{
+@@ -12,9 +12,10 @@
      id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter, ClassExports,
      HostObject, NSZonePtr,
  };
@@ -1369,10 +1363,9 @@ index 63a782f5..5d0166c3 100644
  #[derive(Default)]
  pub struct State {
 diff --git a/src/frameworks/opengles/eagl.rs b/src/frameworks/opengles/eagl.rs
-index 32a0b5ce..51195fdf 100644
 --- a/src/frameworks/opengles/eagl.rs
 +++ b/src/frameworks/opengles/eagl.rs
-@@ -19,11 +19,12 @@ use crate::gles::{create_gles1_ctx, gles1_on_gl2, GLESContext, GLES};
+@@ -19,11 +19,12 @@
  use crate::mem::MutPtr;
  use crate::objc::{id, msg, nil, objc_classes, release, retain, ClassExports, HostObject};
  use crate::options::Options;
@@ -1387,7 +1380,6 @@ index 32a0b5ce..51195fdf 100644
  // These are used by the EAGLDrawable protocol implemented by CAEAGLayer.
  // Since these have the ABI of constant symbols rather than literal constants,
 diff --git a/src/frameworks/uikit.rs b/src/frameworks/uikit.rs
-index c8e67732..eb1ae844 100644
 --- a/src/frameworks/uikit.rs
 +++ b/src/frameworks/uikit.rs
 @@ -9,8 +9,8 @@
@@ -1401,10 +1393,9 @@ index c8e67732..eb1ae844 100644
  pub mod ui_accelerometer;
  pub mod ui_activity_indicator_view;
 diff --git a/src/frameworks/uikit/ui_accelerometer.rs b/src/frameworks/uikit/ui_accelerometer.rs
-index d768521a..a555fc45 100644
 --- a/src/frameworks/uikit/ui_accelerometer.rs
 +++ b/src/frameworks/uikit/ui_accelerometer.rs
-@@ -13,8 +13,9 @@ use crate::objc::{
+@@ -13,8 +13,9 @@
      autorelease, id, msg, msg_class, nil, objc_classes, release, ClassExports, HostObject,
      NSZonePtr, TrivialHostObject, SEL,
  };
@@ -1416,7 +1407,6 @@ index d768521a..a555fc45 100644
  #[derive(Default)]
  pub struct State {
 diff --git a/src/gles/present.rs b/src/gles/present.rs
-index 2a140b6a..0f6095de 100644
 --- a/src/gles/present.rs
 +++ b/src/gles/present.rs
 @@ -9,10 +9,11 @@
@@ -1434,10 +1424,9 @@ index 2a140b6a..0f6095de 100644
  }
  impl FpsCounter {
 diff --git a/src/lib.rs b/src/lib.rs
-index fcfec3fb..177bbceb 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -49,8 +49,26 @@ mod objc;
+@@ -49,8 +49,26 @@
  mod options;
  mod paths;
  mod stack;
@@ -1465,7 +1454,6 @@ index fcfec3fb..177bbceb 100644
  // it is re-exported to avoid having to update lots of imports. The other things
  // probably shouldn't be, but they need a new home (TODO).
 diff --git a/src/libc/mach/time.rs b/src/libc/mach/time.rs
-index ce0772b0..367f5514 100644
 --- a/src/libc/mach/time.rs
 +++ b/src/libc/mach/time.rs
 @@ -7,8 +7,8 @@
@@ -1479,10 +1467,9 @@ index ce0772b0..367f5514 100644
  #[repr(C, packed)]
  struct struct_mach_timebase_info {
 diff --git a/src/libc/stdlib.rs b/src/libc/stdlib.rs
-index 060d1b64..54b8c2c3 100644
 --- a/src/libc/stdlib.rs
 +++ b/src/libc/stdlib.rs
-@@ -13,9 +13,9 @@ use crate::libc::errno::{set_errno, EINVAL};
+@@ -13,9 +13,9 @@
  use crate::libc::string::strlen;
  use crate::libc::wchar::wchar_t;
  use crate::mem::{ConstPtr, ConstVoidPtr, GuestUSize, MutPtr, MutVoidPtr, Ptr, SafeRead};
@@ -1494,7 +1481,6 @@ index 060d1b64..54b8c2c3 100644
  pub mod qsort;
  
 diff --git a/src/libc/sys/timeb.rs b/src/libc/sys/timeb.rs
-index 01250c58..c0d70d55 100644
 --- a/src/libc/sys/timeb.rs
 +++ b/src/libc/sys/timeb.rs
 @@ -8,8 +8,8 @@
@@ -1508,10 +1494,9 @@ index 01250c58..c0d70d55 100644
  #[allow(non_camel_case_types)]
  #[repr(C, packed)]
 diff --git a/src/libc/time.rs b/src/libc/time.rs
-index 37ee9472..9274ca83 100644
 --- a/src/libc/time.rs
 +++ b/src/libc/time.rs
-@@ -10,9 +10,10 @@ use crate::libc::clocale::{setlocale, LC_CTYPE};
+@@ -10,9 +10,10 @@
  use crate::libc::errno::set_errno;
  use crate::libc::stdio::printf::{isspace, isspace_inner};
  use crate::mem::{guest_size_of, ConstPtr, GuestUSize, MutPtr, Ptr, SafeRead};
@@ -1524,7 +1509,6 @@ index 37ee9472..9274ca83 100644
  #[derive(Default)]
  pub struct State {
 diff --git a/src/log.rs b/src/log.rs
-index af0ae3ad..a5175d2a 100644
 --- a/src/log.rs
 +++ b/src/log.rs
 @@ -5,7 +5,9 @@
@@ -1537,7 +1521,7 @@ index af0ae3ad..a5175d2a 100644
  use std::sync::LazyLock;
  
  /// Get a handle to the log file. This is only for use by logging macros!
-@@ -13,6 +15,7 @@ use std::sync::LazyLock;
+@@ -13,6 +15,7 @@
  /// All the logging macros print to stderr or (on Android) logcat, but this
  /// is not convenient for users who aren't accustomed to command-line tools or
  /// who don't have access to ADB, so we also write to a log file.
@@ -1545,7 +1529,7 @@ index af0ae3ad..a5175d2a 100644
  pub fn get_log_file() -> &'static File {
      static LOG_FILE: LazyLock<File> = LazyLock::new(|| {
          File::create(crate::paths::user_data_base_path().join("touchHLE_log.txt")).unwrap()
-@@ -21,6 +24,13 @@ pub fn get_log_file() -> &'static File {
+@@ -21,6 +24,13 @@
      &LOG_FILE
  }
  

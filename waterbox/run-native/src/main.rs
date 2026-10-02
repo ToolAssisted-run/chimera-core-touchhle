@@ -13,7 +13,7 @@
 //!   --digest-every N        print machine time and a picture hash every N frames
 //!
 //! At the end it prints one line the gate compares between flavors:
-//!   frames=N time_ns=T video=<hash of the last picture> running=<0|1>
+//!   frames=N ticks=I time_ns=T video=<hash of the last picture> WxH running=<0|1>
 
 use std::collections::BTreeMap;
 use touchhle_guest as core;
@@ -147,8 +147,9 @@ fn main() {
         }
         if digest_every > 0 && (frame + 1) % digest_every == 0 {
             println!(
-                "frame {} time_ns={} video={:016x} {}x{}",
+                "frame {} ticks={} time_ns={} video={:016x} {}x{}",
                 frame + 1,
+                core::GetExecutedTicks(),
                 core::GetMachineTimeNs(),
                 fnv64(pixels),
                 w,
@@ -161,8 +162,9 @@ fn main() {
     }
     let (pixels, w, h) = video();
     println!(
-        "frames={} time_ns={} video={:016x} {}x{} running={}",
+        "frames={} ticks={} time_ns={} video={:016x} {}x{} running={}",
         core::GetFrameCount(),
+        core::GetExecutedTicks(),
         core::GetMachineTimeNs(),
         fnv64(pixels),
         w,

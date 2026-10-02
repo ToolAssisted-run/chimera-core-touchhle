@@ -1,0 +1,19 @@
+[unstable]
+build-std = ["std", "panic_abort"]
+json-target-spec = true
+
+[build]
+# waterbox-guest.json is the stock x86_64-unknown-linux-musl target with two
+# fields changed (taken from chimera-core-ruffle, where both were learned):
+#
+# disable-redzone: a guest may be interrupted by a dirty-tracking fault at any
+# instruction, and on Windows that exception lands on the guest's own stack,
+# where the bytes below rsp do not survive it (miniBox docs/RED-ZONE.md). C
+# code gets -mno-red-zone through the musl-gcc specs; Rust is told here.
+#
+# has-thread-local = false: Rust compiles #[thread_local] to %fs-relative
+# loads, and %fs is the one per-thread base a host OS does not maintain for
+# the guest. Without native TLS, std's thread locals go through musl's
+# pthread_getspecific instead, like every C core's do.
+target = "waterbox-guest.json"
+rustflags = ["-C", "code-model=large", "-C", "relocation-model=static", "-C", "target-feature=+crt-static"]

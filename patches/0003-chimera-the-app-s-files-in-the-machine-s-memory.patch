@@ -1,0 +1,470 @@
+diff --git a/src/fs.rs b/src/fs.rs
+--- a/src/fs.rs
++++ b/src/fs.rs
+@@ -30,11 +30,14 @@
+ 
+ use crate::fs::bundle::{IpaFile, IpaFileRef};
+ use crate::paths;
++use std::cell::RefCell;
++#[cfg(not(feature = "chimera"))]
+ use std::collections::HashMap;
+ use std::fs;
+ use std::fs::File;
+ use std::io::{Read, Seek, Write};
+ use std::path::{Path, PathBuf};
++use std::rc::Rc;
+ use std::time::UNIX_EPOCH;
+ 
+ /// The actual location of a file outside the virtual filesystem, e.g. a host
+@@ -47,7 +50,41 @@
+     IpaFileRef(IpaFileRef),
+     /// Name of a resource file bundled with touchHLE. Read only.
+     ResourceFilePath(String),
+-}
++    /// A file whose bytes live in memory: in Chimera's build, every file the
++    /// app writes, so that what it saved is part of the machine (and of a
++    /// savestate) rather than of the host's disk. Can be read or written.
++    Memory(MemFile),
++}
++
++/// The bytes of a [FileLocation::Memory] file, shared by every handle open on
++/// it, and when they last changed (seconds since the Unix epoch).
++#[derive(Debug, Default)]
++pub struct MemFileData {
++    bytes: Vec<u8>,
++    modified: i64,
++}
++pub type MemFile = Rc<RefCell<MemFileData>>;
++
++#[cfg_attr(not(feature = "chimera"), allow(dead_code))]
++fn new_mem_file() -> MemFile {
++    let file = MemFile::default();
++    touch_mem_file(&file);
++    file
++}
++fn touch_mem_file(file: &MemFile) {
++    file.borrow_mut().modified = crate::time::SystemTime::now()
++        .duration_since(crate::time::UNIX_EPOCH)
++        .map(|d| d.as_secs() as i64)
++        .unwrap_or(0);
++}
++
++/// A directory's entries. Chimera's build keeps them in name order: a
++/// HashMap's order is seeded afresh by every process, and an app that lists a
++/// directory sees the order it is given.
++#[cfg(not(feature = "chimera"))]
++type ChildMap = HashMap<String, FsNode>;
++#[cfg(feature = "chimera")]
++type ChildMap = std::collections::BTreeMap<String, FsNode>;
+ 
+ #[derive(Debug)]
+ pub enum FsError {
+@@ -76,13 +113,15 @@
+         writeable: bool,
+     },
+     Directory {
+-        children: HashMap<String, FsNode>,
++        children: ChildMap,
++        /// The host directory new children are created in, if any. A
++        /// writeable directory in memory (Chimera's build) has an empty path.
+         writeable: Option<PathBuf>,
+     },
+ }
+ impl FsNode {
+     fn from_host_dir(host_path: &Path, writeable: bool) -> Self {
+-        let mut children = HashMap::new();
++        let mut children = ChildMap::new();
+         for entry in std::fs::read_dir(host_path).unwrap() {
+             let entry = entry.unwrap();
+             let kind = entry.file_type().unwrap();
+@@ -124,9 +163,18 @@
+     // Convenience methods for constructing the read-only parts of the initial
+     // filesystem layout
+ 
++    /// A writeable directory that exists only in memory (Chimera's build).
++    #[cfg(feature = "chimera")]
++    fn mem_dir() -> Self {
++        FsNode::Directory {
++            children: ChildMap::new(),
++            writeable: Some(PathBuf::new()),
++        }
++    }
++
+     fn dir() -> Self {
+         FsNode::Directory {
+-            children: HashMap::new(),
++            children: ChildMap::new(),
+             writeable: None,
+         }
+     }
+@@ -381,6 +429,13 @@
+     IpaBundleFile(IpaFile),
+     ResourceFile(paths::ResourceFile),
+     Socket,
++    /// An open [FileLocation::Memory] file: its bytes, and this handle's
++    /// position and whether it appends.
++    Memory {
++        file: MemFile,
++        pos: u64,
++        append: bool,
++    },
+ }
+ 
+ impl GuestFile {
+@@ -400,10 +455,20 @@
+         GuestFile::Directory
+     }
+ 
++    fn from_mem_file(file: &MemFile, append: bool) -> GuestFile {
++        GuestFile::Memory {
++            file: file.clone(),
++            pos: 0,
++            append,
++        }
++    }
++
+     pub fn sync_all(&self) -> std::io::Result<()> {
+         match self {
+             GuestFile::File(file) => file.sync_all(),
+-            GuestFile::IpaBundleFile(_) | GuestFile::ResourceFile(_) => Ok(()),
++            GuestFile::IpaBundleFile(_) | GuestFile::ResourceFile(_) | GuestFile::Memory { .. } => {
++                Ok(())
++            }
+             GuestFile::Directory => {
+                 log!("Warning: syncing directory as a guest file.");
+                 Ok(())
+@@ -417,6 +482,11 @@
+     pub fn set_len(&self, len: u64) -> std::io::Result<()> {
+         match self {
+             GuestFile::File(file) => file.set_len(len),
++            GuestFile::Memory { file, .. } => {
++                file.borrow_mut().bytes.resize(len as usize, 0);
++                touch_mem_file(file);
++                Ok(())
++            }
+             GuestFile::IpaBundleFile(file) => {
+                 panic!("Attempt to resize a read-only file: {file:?}")
+             }
+@@ -447,6 +517,14 @@
+     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+         match self {
+             GuestFile::File(file) => file.read(buf),
++            GuestFile::Memory { file, pos, .. } => {
++                let data = file.borrow();
++                let start = (*pos as usize).min(data.bytes.len());
++                let n = buf.len().min(data.bytes.len() - start);
++                buf[..n].copy_from_slice(&data.bytes[start..start + n]);
++                *pos += n as u64;
++                Ok(n)
++            }
+             GuestFile::IpaBundleFile(file) => file.read(buf),
+             GuestFile::ResourceFile(file) => file.get().read(buf),
+             GuestFile::Directory => Err(std::io::Error::new(
+@@ -462,6 +540,23 @@
+     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+         match self {
+             GuestFile::File(file) => file.write(buf),
++            GuestFile::Memory { file, pos, append } => {
++                {
++                    let mut data = file.borrow_mut();
++                    if *append {
++                        *pos = data.bytes.len() as u64;
++                    }
++                    let start = *pos as usize;
++                    let end = start + buf.len();
++                    if data.bytes.len() < end {
++                        data.bytes.resize(end, 0);
++                    }
++                    data.bytes[start..end].copy_from_slice(buf);
++                    *pos = end as u64;
++                }
++                touch_mem_file(file);
++                Ok(buf.len())
++            }
+             GuestFile::IpaBundleFile(file) => {
+                 panic!("Attempt to write to a read-only file: {file:?}")
+             }
+@@ -476,6 +571,7 @@
+     fn flush(&mut self) -> std::io::Result<()> {
+         match self {
+             GuestFile::File(file) => file.flush(),
++            GuestFile::Memory { .. } => Ok(()),
+             GuestFile::IpaBundleFile(file) => Err(std::io::Error::new(
+                 std::io::ErrorKind::ReadOnlyFilesystem,
+                 format!("Attempt to flush a read-only file: {file:?}"),
+@@ -493,6 +589,26 @@
+     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+         match self {
+             GuestFile::File(file) => file.seek(pos),
++            GuestFile::Memory {
++                file,
++                pos: position,
++                ..
++            } => {
++                let len = file.borrow().bytes.len() as i64;
++                let new = match pos {
++                    std::io::SeekFrom::Start(n) => n as i64,
++                    std::io::SeekFrom::End(n) => len + n,
++                    std::io::SeekFrom::Current(n) => *position as i64 + n,
++                };
++                if new < 0 {
++                    return Err(std::io::Error::new(
++                        std::io::ErrorKind::InvalidInput,
++                        "seek to a negative position",
++                    ));
++                }
++                *position = new as u64;
++                Ok(*position)
++            }
+             GuestFile::IpaBundleFile(file) => file.seek(pos),
+             GuestFile::ResourceFile(file) => file.get().seek(pos),
+             GuestFile::Directory => {
+@@ -552,6 +668,12 @@
+         let bundle_guest_path = home_directory.join(&bundle_dir_name);
+ 
+         let directories = ["Documents", "Library", "tmp"];
++        // Chimera's build keeps these in memory (below), not on the host.
++        #[cfg(feature = "chimera")]
++        let host_path_directories: [Option<PathBuf>; 3] = [None, None, None];
++        #[cfg(feature = "chimera")]
++        let _ = bundle_id; // names the host sandbox directory, which this build has none of
++        #[cfg(not(feature = "chimera"))]
+         let host_path_directories = directories.map(|dir| {
+             if !read_only_mode {
+                 let path = paths::user_data_base_path()
+@@ -581,6 +703,7 @@
+             }
+         });
+ 
++        #[cfg(not(feature = "chimera"))]
+         if !read_only_mode {
+             // Special case: Some apps may create save files at
+             // Library/Preferences at the start, thus presence of that
+@@ -664,7 +787,7 @@
+                 FsNode::resource_file(format!("{DYLIBS_DIR}/libxml2.2.dylib")),
+             );
+ 
+-        let mut app_dir_children = HashMap::new();
++        let mut app_dir_children = ChildMap::new();
+         app_dir_children.insert(bundle_dir_name, app_bundle.into_fs_node());
+         for (dir, host_path) in directories.iter().zip(host_path_directories.iter()) {
+             if let Some(host_path) = host_path {
+@@ -674,6 +797,19 @@
+                 );
+             }
+         }
++        // The same directories in Chimera's build, empty and in memory:
++        // Library/Preferences and Library/Caches because apps expect them.
++        #[cfg(feature = "chimera")]
++        if !read_only_mode {
++            app_dir_children.insert("Documents".to_string(), FsNode::mem_dir());
++            app_dir_children.insert(
++                "Library".to_string(),
++                FsNode::mem_dir()
++                    .with_child("Preferences", FsNode::mem_dir())
++                    .with_child("Caches", FsNode::mem_dir()),
++            );
++            app_dir_children.insert("tmp".to_string(), FsNode::mem_dir());
++        }
+ 
+         let root = FsNode::dir()
+             .with_child(
+@@ -842,6 +978,7 @@
+                 FileLocation::IpaFileRef(ipa_file_ref) => {
+                     Ok(ipa_file_ref.get_last_modified().into())
+                 }
++                FileLocation::Memory(file) => Ok(file.borrow().modified),
+                 FileLocation::Path(path) => {
+                     // TODO: account for the current timezone, here it's in GMT
+                     fs::metadata(path)
+@@ -867,6 +1004,7 @@
+         match node {
+             FsNode::File { location, .. } => match location {
+                 FileLocation::IpaFileRef(ipa_file_ref) => Ok(ipa_file_ref.get_size()),
++                FileLocation::Memory(file) => Ok(file.borrow().bytes.len() as u64),
+                 FileLocation::Path(path) => {
+                     fs::metadata(path).map(|meta| meta.len()).map_err(|_| ())
+                 }
+@@ -976,12 +1114,54 @@
+                     let resource_file = handle_open_err(paths::ResourceFile::open(name), name);
+                     Ok(GuestFile::from_resource_file(resource_file))
+                 }
++                FileLocation::Memory(file) => Ok(GuestFile::from_mem_file(file, false)),
+             },
+             FsNode::Directory { .. } => Err(()),
+         }
+     }
+ 
+     pub fn rename<P: AsRef<GuestPath> + Copy>(&mut self, from: P, to: P) -> Result<(), FsError> {
++        // A file in memory moves by moving its node.
++        if let Some(FsNode::File {
++            location: FileLocation::Memory(file),
++            writeable,
++        }) = self.lookup_node(from.as_ref())
++        {
++            assert!(writeable); // TODO: return errno
++            let file = file.clone();
++            if resolve_path(from.as_ref(), Some(&self.working_directory))
++                == resolve_path(to.as_ref(), Some(&self.working_directory))
++            {
++                return Ok(());
++            }
++            let (to_parent, to_name) = self
++                .lookup_parent_node(to.as_ref())
++                .ok_or(FsError::NonexistentParentDir)?;
++            let FsNode::Directory {
++                children,
++                writeable: Some(_),
++            } = to_parent
++            else {
++                return Err(FsError::ReadonlyParentDir);
++            };
++            if let Some(FsNode::Directory { .. }) = children.get(&to_name) {
++                return Err(FsError::IsDirectory);
++            }
++            children.insert(
++                to_name,
++                FsNode::File {
++                    location: FileLocation::Memory(file),
++                    writeable: true,
++                },
++            );
++            let (from_parent, from_name) = self.lookup_parent_node(from.as_ref()).unwrap();
++            let FsNode::Directory { children, .. } = from_parent else {
++                panic!()
++            };
++            children.remove(&from_name).unwrap();
++            return Ok(());
++        }
++
+         let from_node = self
+             .lookup_node(from.as_ref())
+             .ok_or(FsError::DoesNotExist)?;
+@@ -1100,6 +1280,13 @@
+                                 handle_open_err(paths::ResourceFile::open(name), name);
+                             return Ok(GuestFile::from_resource_file(resource_file));
+                         }
++                        FileLocation::Memory(file) => {
++                            if truncate {
++                                file.borrow_mut().bytes.clear();
++                                touch_mem_file(file);
++                            }
++                            return Ok(GuestFile::from_mem_file(file, append));
++                        }
+                     }
+                 }
+                 FsNode::Directory { .. } => {
+@@ -1131,6 +1318,24 @@
+             }
+         }
+ 
++        // Chimera's build creates it in memory.
++        #[cfg(feature = "chimera")]
++        {
++            let _ = dir_host_path;
++            let file = new_mem_file();
++            log_dbg!("Created file at path {:?} (in memory)", path);
++            children.insert(
++                new_filename,
++                FsNode::File {
++                    location: FileLocation::Memory(file.clone()),
++                    writeable: true,
++                },
++            );
++            #[allow(clippy::needless_return)]
++            return Ok(GuestFile::from_mem_file(&file, append));
++        }
++
++        #[allow(unreachable_code)]
+         let host_path = dir_host_path.join(&new_filename);
+ 
+         let file = handle_open_err(
+@@ -1197,17 +1402,19 @@
+                     return Err(FsError::AccessDenied);
+                 }
+ 
+-                let host_path = match location {
+-                    FileLocation::Path(host_path) => host_path,
++                match location {
++                    FileLocation::Path(host_path) => {
++                        handle_open_err(std::fs::remove_file(host_path), host_path);
++                        log_dbg!(
++                            "Deleted file at path {:?} (host path: {:?})",
++                            path,
++                            host_path
++                        );
++                    }
++                    // nothing outside the machine to delete
++                    FileLocation::Memory(_) => log_dbg!("Deleted file at path {:?}", path),
+                     FileLocation::IpaFileRef(_) | FileLocation::ResourceFilePath(_) => panic!(),
+-                };
+-
+-                handle_open_err(std::fs::remove_file(host_path), host_path);
+-                log_dbg!(
+-                    "Deleted file at path {:?} (host path: {:?})",
+-                    path,
+-                    host_path
+-                );
++                }
+             }
+             FsNode::Directory {
+                 children,
+@@ -1223,7 +1430,10 @@
+                     return Err(FsError::AccessDenied);
+                 };
+ 
+-                handle_open_err(std::fs::remove_dir(host_path), host_path);
++                // (a directory in memory has nothing on the host to remove)
++                if !cfg!(feature = "chimera") {
++                    handle_open_err(std::fs::remove_dir(host_path), host_path);
++                }
+                 log_dbg!(
+                     "Deleted directory at path {:?} (host path: {:?})",
+                     path,
+@@ -1290,7 +1500,10 @@
+ 
+         let host_path = dir_host_path.join(&new_dir_name);
+ 
+-        handle_open_err(std::fs::create_dir(&host_path), &host_path);
++        // (Chimera's build makes the directory in memory only)
++        if !cfg!(feature = "chimera") {
++            handle_open_err(std::fs::create_dir(&host_path), &host_path);
++        }
+         log_dbg!(
+             "Created directory at path {:?} (host path: {:?})",
+             path,
+@@ -1299,7 +1512,7 @@
+         children.insert(
+             new_dir_name,
+             FsNode::Directory {
+-                children: HashMap::new(),
++                children: ChildMap::new(),
+                 writeable: Some(host_path),
+             },
+         );
+diff --git a/src/libc/posix_io/stat.rs b/src/libc/posix_io/stat.rs
+--- a/src/libc/posix_io/stat.rs
++++ b/src/libc/posix_io/stat.rs
+@@ -103,7 +103,10 @@
+     let mut stat = stat::default();
+ 
+     match file.file {
+-        GuestFile::File(_) | GuestFile::IpaBundleFile(_) | GuestFile::ResourceFile(_) => {
++        GuestFile::File(_)
++        | GuestFile::IpaBundleFile(_)
++        | GuestFile::ResourceFile(_)
++        | GuestFile::Memory { .. } => {
+             stat.st_mode |= S_IFREG;
+ 
+             // TODO: use `std::fs::metadata()` instead
+diff --git a/src/paths.rs b/src/paths.rs
+--- a/src/paths.rs
++++ b/src/paths.rs
+@@ -122,6 +122,7 @@
+ 
+ /// Name of the directory where touchHLE will store sandboxed app data, e.g.
+ /// the `Documents` directory.
++#[cfg_attr(feature = "chimera", allow(dead_code))]
+ pub const SANDBOX_DIR: &str = "touchHLE_sandbox";
+ 
+ /// Get a platform-specific base path needed for accessing touchHLE's
