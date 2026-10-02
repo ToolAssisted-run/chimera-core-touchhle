@@ -26,6 +26,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+/* RUNWBX_TIMES=1: say how long each phase took, on stderr */
+static void phase(const char *what)
+{
+	static int on = -1;
+	static double last;
+	if (on < 0) on = getenv("RUNWBX_TIMES") != NULL;
+	if (!on) return;
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	const double now = ts.tv_sec + ts.tv_nsec / 1e9;
+	if (what) fprintf(stderr, "run-wbx: %-24s %.3fs\n", what, last ? now - last : 0.0);
+	last = now;
+}
 
 typedef struct { const uint8_t *p; size_t len, pos; } reader;
 static intptr_t buf_read(uintptr_t ud, uint8_t *d, uintptr_t n)
@@ -124,6 +139,7 @@ static void mount(const char *name, const uint8_t *p, size_t len)
 /* the host, the core loaded and Init run on the engine's mounts, sealed */
 static void build_host(void)
 {
+	phase(NULL);
 	size_t wlen;
 	uint8_t *w = slurp(g_wbx, &wlen);
 	/* matches waterbox.config memoryLayoutMiB */
@@ -149,6 +165,7 @@ static void build_host(void)
 	wbx_activate_host(g_host, &r);
 	fail("activate", &r);
 
+	phase("create + mount");
 	g_Init = (i32fn)proc("Init");
 	g_GetLoadError = (ptrfn)proc("GetLoadError");
 	g_FrameAdvance = (framefn)proc("FrameAdvance");
@@ -172,11 +189,13 @@ static void build_host(void)
 		fprintf(stderr, "Init failed: %s\n", (const char *)g_GetLoadError());
 		exit(1);
 	}
+	phase("Init");
 	wbx_deactivate_host(g_host, &r);
 	wbx_seal(g_host, &r);
 	fail("seal", &r);
 	wbx_activate_host(g_host, &r);
 	fail("activate", &r);
+	phase("seal");
 }
 
 static uint64_t fnv64(const uint8_t *p, size_t n)
@@ -389,6 +408,7 @@ int main(int argc, char **argv)
 			}
 		}
 		g_FrameAdvance(buttons);
+		if (frame < 3) phase(frame == 0 ? "frame 1" : frame == 1 ? "frame 2" : "frame 3");
 		{
 			const int16_t *a = (const int16_t *)g_GetAudio();
 			const int n = g_GetAudioSampleCount() * 2;

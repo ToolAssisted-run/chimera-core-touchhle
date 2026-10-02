@@ -68,12 +68,6 @@ if [ "$rebuild" = 1 ]; then
 		echo "the build failed; see $work/build-*.log" >&2
 		exit 1
 	}
-	# TestApp's stubs come from a touchHLE that can dump its symbols: the
-	# reference itself cannot (it has no --dump), so upstream's own build
-	if [ ! -x "$build/native-stock/release/touchHLE" ]; then
-		(cd "$root/extern/touchHLE" && CARGO_TARGET_DIR="$build/native-stock" cargo build --release -j "$jobs") \
-			> "$work/build-stock.log" 2>&1 || { echo "building stock touchHLE failed" >&2; exit 1; }
-	fi
 	if [ ! -d "$sdk" ]; then
 		mkdir -p "$build/deps/sdk"
 		tgz="$build/deps/common-3.0.sdk-linux-x86_64-v0.3.7.tar.gz"
@@ -83,14 +77,19 @@ if [ "$rebuild" = 1 ]; then
 			{ echo "the SDK is not the release this gate pins" >&2; exit 1; }
 		tar -xzf "$tgz" -C "$build/deps/sdk"
 	fi
-	python3 "$here/build-testapp.py" --touchhle "$build/native-stock/release/touchHLE" --sdk "$sdk" \
+	python3 "$here/build-testapp.py" --touchhle "$native" --sdk "$sdk" \
 		> "$work/build-testapp.log" 2>&1 || { echo "building the test apps failed" >&2; exit 1; }
 fi
 for f in "$native" "$wbx" "$core" "$apps/TestApp.ipa" "$apps/SoundTest.ipa" "$apps/SaveTest.ipa" "$apps/ClockTest.ipa"; do
 	[ -e "$f" ] || { echo "missing $f (run without -n)" >&2; exit 1; }
 done
 
-box() { systemd-run --user --scope -q -p MemoryMax=8G "$@" 2>/dev/null || "$@"; }
+# a sandboxed run under a memory cap where systemd allows one (not on CI)
+if systemd-run --user --scope -q true 2>/dev/null; then
+	box() { systemd-run --user --scope -q -p MemoryMax=8G "$@"; }
+else
+	box() { "$@"; }
+fi
 # digest lines only: what the app prints on stdout is not the machine's state
 digest() { grep -E '^(frame |frames=|save )' "$1"; }
 
@@ -186,8 +185,8 @@ else
 	report FAIL "clock: cpu_mhz" "$r412 reads at 412 MHz, ${r600:-none} at 600"
 fi
 if [ "$(clock "$work/clock-date.n" | sed -n 3p | awk '{print $5}')" = 1000000002 ] \
-	&& [ "$(sed -n 3p <<< "$cref" | awk '{print $5}')" = 946684802 ]; then
-	report PASS "clock: the date starts at rtc_start and runs with the machine" "time() 2 s in: 946684802, and 1000000002 from 1000000000"
+	&& [ "$(sed -n 3p <<< "$cref" | awk '{print $5}')" = 1262304002 ]; then
+	report PASS "clock: the date starts at rtc_start and runs with the machine" "time() 2 s in: 1262304002, and 1000000002 from 1000000000"
 else
 	report FAIL "clock: rtc_start" "$(sed -n 3p <<< "$cref")"
 fi
@@ -261,6 +260,9 @@ else
 fi
 
 # ------------------------------------------- 8. games (tests/roms-local/*.ipa)
+# What each app does is waterbox/tests/game-list.txt's: its frames and its
+# input, the same for every flavor. An .ipa the list does not name runs
+# untouched for 900 frames.
 shopt -s nullglob
 games=("$root"/tests/roms-local/*.ipa)
 if [ "${#games[@]}" = 0 ]; then
@@ -268,18 +270,42 @@ if [ "${#games[@]}" = 0 ]; then
 fi
 for game in "${games[@]}"; do
 	name="$(basename "$game" .ipa)"
-	"$native" "$game" --frames 900 --digest-every 60 > "$work/g-$name.n" 2> "$work/g-$name.ne"
-	box "$wbx" "$core" "$game" --frames 900 --digest-every 60 > "$work/g-$name.w" 2> "$work/g-$name.we"
-	box "$wbx" "$core" "$game" --frames 900 --digest-every 60 --session > "$work/g-$name.s" 2>/dev/null
-	if [ "$(digest "$work/g-$name.n" | wc -l)" -ge 2 ] && diff <(digest "$work/g-$name.n") <(digest "$work/g-$name.w") > /dev/null; then
-		report PASS "$name: native == sandbox" "900 frames"
+	line="$(grep -E "^$name *\|" "$here/tests/game-list.txt" | head -1)"
+	frames=900
+	input=()
+	if [ -n "$line" ]; then
+		IFS='|' read -r _ frames inputs shows <<< "$line"
+		frames="$(echo $frames)"
+		read -r -a input <<< "$inputs"
+		if [ "$frames" = SKIP ]; then
+			report SKIP "$name" "$(echo $shows)"
+			continue
+		fi
+	fi
+	half=$((frames / 2))
+	t0=$(date +%s)
+	"$native" "$game" --frames "$frames" --digest-every 300 "${input[@]}" > "$work/g-$name.n" 2> "$work/g-$name.ne"
+	t1=$(date +%s)
+	box "$wbx" "$core" "$game" --frames "$frames" --digest-every 300 "${input[@]}" > "$work/g-$name.w" 2> "$work/g-$name.we"
+	t2=$(date +%s)
+	box "$wbx" "$core" "$game" --frames "$frames" --digest-every 300 "${input[@]}" --session > "$work/g-$name.s" 2>/dev/null
+	speed="native $((frames / (t1 - t0 + 1))) fps, sandbox $((frames / (t2 - t1 + 1))) fps"
+	if [ "$(digest "$work/g-$name.n" | grep -c '^frame ')" -ge 2 ] && grep -q "^frames=$frames .*running=1" "$work/g-$name.n" \
+		&& diff <(digest "$work/g-$name.n") <(digest "$work/g-$name.w") > /dev/null; then
+		report PASS "$name: native == sandbox" "$frames frames, a digest every 300; $speed"
 	else
 		report FAIL "$name: native == sandbox" "first difference: $(diff <(digest "$work/g-$name.n") <(digest "$work/g-$name.w") | sed -n 2p | cut -c1-80)"
 	fi
-	if diff <(digest "$work/g-$name.w") <(digest "$work/g-$name.s") > /dev/null; then
-		report PASS "$name: a state moved to a fresh host at 450 lands the same"
+	if [ -s "$work/g-$name.w" ] && diff <(digest "$work/g-$name.w") <(digest "$work/g-$name.s") > /dev/null; then
+		report PASS "$name: the state moved to a fresh host at $half lands the same"
 	else
-		report FAIL "$name: session"
+		report FAIL "$name: session" "see $work/g-$name.s"
+	fi
+	pictures="$(digest "$work/g-$name.n" | awk '/^frame /{print $4}' | sort -u | wc -l)"
+	if [ "${#input[@]}" = 0 ] || [ "$pictures" -ge 4 ]; then
+		report PASS "$name: the run goes where it should" "$pictures different pictures in $(digest "$work/g-$name.n" | grep -c '^frame ') digests: $(echo ${shows:-no input})"
+	else
+		report FAIL "$name: the run goes where it should" "only $pictures different pictures"
 	fi
 done
 

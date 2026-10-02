@@ -1,0 +1,11 @@
+# The gate's game legs: one line per app, run when tests/roms-local/<app>.ipa
+# is there (decrypted .ipa files, never committed).
+#
+#   app | frames | input (run-native/run-wbx flags; axes 0..65535) | what the run shows
+#
+# frames SKIP: the app does not run in touchHLE, and the last field says why.
+# A game that does not work is a finding about that game, not a broken gate.
+terminator | 4500 |--touch 1200:1:32768:40000 --release 1204:1 --touch 1500:1:44373:21504 --release 1504:1 --touch 1800:1:44373:15155 --release 1804:1 --touch 2500:1:32768:40000 --release 2504:1 | title, tap -> main menu, NEW GAME -> difficulty, NORMAL -> story card, tap -> the intro cutscene in 3D
+thps2 | 6000 | --touch 1300:1:57344:61850 --release 1304:1 --touch 1700:1:57344:61850 --release 1704:1 --touch 2100:1:57344:61850 --release 2104:1 --touch 2500:1:57344:61850 --release 2504:1 --touch 2900:1:57344:61850 --release 2904:1 --touch 3500:1:24166:61850 --release 3504:1 | menu, ACCEPT x5 (career, new career, Tony Hawk, style, The Hangar) -> goals, PLAY -> skating The Hangar
+castle-of-magic | 600 | | Gameloft's piracy notice: THIS dump trips it (stock touchHLE shows the same); the app turns the device sideways at its first frame
+low-grav-racer-2 | SKIP | | needs +[NSBundle bundleWithPath:] for a bundle inside the app, +[NSObject load] and NSOperationQueue (ngmoco's NGPlatform) - none in touchHLE 0.3.0, and the app is not in its compatibility database

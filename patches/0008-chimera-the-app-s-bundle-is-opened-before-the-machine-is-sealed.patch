@@ -1,0 +1,81 @@
+diff --git a/src/chimera/mod.rs b/src/chimera/mod.rs
+--- a/src/chimera/mod.rs
++++ b/src/chimera/mod.rs
+@@ -48,6 +48,8 @@
+     audio: Vec<i16>,
+     /// Save data to put in the app's home before it starts.
+     save_data: Vec<(String, Vec<u8>)>,
++    /// The app's bundle, opened before the machine was sealed.
++    bundle: Option<crate::fs::BundleData>,
+     /// The machine, while it is stopped between frames (the frame ends with
+     /// it borrowed on the machine's own stack, which does not move while
+     /// suspended); null while it runs.
+@@ -60,6 +62,7 @@
+     exited: None,
+     audio: Vec::new(),
+     save_data: Vec::new(),
++    bundle: None,
+     stopped: std::ptr::null_mut(),
+ };
+ // The machine is one thread.
+@@ -77,12 +80,31 @@
+ /// Whether `path` is an app bundle touchHLE can open, and why not: the same
+ /// two steps upstream's `main` begins with, done before anything runs so a
+ /// bad file is refused when the core loads rather than on its first frame.
++///
++/// It also opens the bundle for the machine and keeps it open ([take_bundle]):
++/// the core calls this in Init, before the sandbox is sealed, and a file
++/// opened then is opened the same way by every session that loads a state -
++/// the sandbox does not carry open files in a state, so one the app's first
++/// frame opened would be gone in another session (THPS2 died reading its
++/// .ipa after a state moved to a new host).
+ pub fn check_bundle(path: &str) -> Result<(), String> {
+-    let data = crate::fs::BundleData::open_any(std::path::Path::new(path))
+-        .map_err(|e| format!("Could not open app bundle: {e}"))?;
+-    crate::bundle::Bundle::new_bundle_and_fs_from_host_path(data, /* read_only_mode: */ true)
+-        .map(|_| ())
+-        .map_err(|e| format!("Application bundle error: {e}"))
++    let open = || {
++        crate::fs::BundleData::open_any(std::path::Path::new(path))
++            .map_err(|e| format!("Could not open app bundle: {e}"))
++    };
++    crate::bundle::Bundle::new_bundle_and_fs_from_host_path(
++        open()?,
++        /* read_only_mode: */ true,
++    )
++    .map_err(|e| format!("Application bundle error: {e}"))?;
++    state().bundle = Some(open()?);
++    Ok(())
++}
++
++/// The bundle check_bundle opened, for touchHLE's main to use instead of
++/// opening it again.
++pub(crate) fn take_bundle() -> Option<crate::fs::BundleData> {
++    state().bundle.take()
+ }
+ 
+ /// Make the machine: touchHLE's command line, as upstream's `main` takes it
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -229,8 +229,18 @@
+         log!("Warning: The bundle path has a trailing quotation mark! This often happens accidentally on Windows when tab-completing, because '\\\"' gets interpreted by Rust in the wrong way. Did you meant to write {:?}?", fixed);
+     }
+ 
+-    let bundle_data = fs::BundleData::open_any(&bundle_path)
+-        .map_err(|e| format!("Could not open app bundle: {e}"))?;
++    // Chimera's build opened it already, before the machine was sealed
++    // (chimera::check_bundle): a file opened after that is not there for a
++    // state loaded into another session.
++    #[cfg(feature = "chimera")]
++    let opened = chimera::take_bundle();
++    #[cfg(not(feature = "chimera"))]
++    let opened = None;
++    let bundle_data = match opened {
++        Some(data) => data,
++        None => fs::BundleData::open_any(&bundle_path)
++            .map_err(|e| format!("Could not open app bundle: {e}"))?,
++    };
+     let (bundle, fs) = match bundle::Bundle::new_bundle_and_fs_from_host_path(
+         bundle_data,
+         /* read_only_mode: */ false,

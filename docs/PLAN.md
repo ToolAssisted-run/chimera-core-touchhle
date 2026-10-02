@@ -46,7 +46,7 @@ through `crate::time` (`src/chimera/time.rs`), which keeps std's names:
   iPhone's and the 3G's ARM11) + time skipped while every thread slept;
 - when every thread is asleep the scheduler jumps the clock to the next
   deadline instead of sleeping;
-- the date starts at the `startDate` setting (2000-01-01) and moves with it.
+- the date starts at the `rtc_start` setting (2010-01-01; not before 2001-01-01, Apple's epoch, which touchHLE assumes is past - three of the user's four games stopped on a date in 2000) and moves with it.
 
 Upstream's own build keeps std's clocks (`crate::time` re-exports them).
 
@@ -147,8 +147,42 @@ ends depends only on the machine, never on the host.
     in the leg itself), cpu_mhz 600 vs 412 against the stall leg, and a
     sandbox core built at 413 MHz turned the clock and CLI legs red while
     the idle-bound legs stayed green - which is why ClockTest exists.
-- [ ] M7 games from the user: compatibility, speed (softpipe), and whatever
-  they find.
+- [ ] M7 games from the user (2026-10-02: four decrypted .ipa files in
+  Documents\TAS\roms\iOS, copied to tests/roms-local; the gate's game legs
+  are waterbox/tests/game-list.txt):
+  - **Terminator Salvation 1.0.7** (Gameloft): title -> menus -> NORMAL ->
+    the 3D intro cutscene, scripted in the gate; native == sandbox.
+  - **Tony Hawk's Pro Skater 2 1.2.1**: menus -> career -> The Hangar,
+    skating; native == sandbox.
+  - **Castle of Magic 1.0.4**: shows Gameloft's "may have been illegally
+    downloaded" notice - this dump trips it (stock touchHLE shows the same;
+    the appdb reports 1.0.4 working from other dumps). Needs a clean dump.
+    It showed a bug of ours on the way (below).
+  - **Low Grav Racer 2 1.1**: not in touchHLE's database; stops on
+    +[NSBundle bundleWithPath:] for NGPlatformResources.bundle, then
+    +[NSObject load], then NSOperationQueue (ngmoco's NGPlatform) - upstream
+    touchHLE gaps, not this core's. SKIP in the gate.
+
+### Found with the games (2026-10-02)
+
+- **rtc_start before 2001** stopped three of the four at their first NSDate:
+  touchHLE subtracts Apple's epoch (2001-01-01) and unwraps. Default now
+  2010-01-01, minimum 2001-01-01.
+- **A device turned at run time drew sheared rows** (Castle of Magic):
+  OSMesa learns a buffer's size only at MakeCurrent, which touchHLE skips for
+  a current context, so the context kept drawing 320-pixel rows that were
+  read as 480. rotate_device now binds the current context again (patch
+  0001).
+- **Speed: miniBox's mmap**, not the core. The sandbox ran TestApp at 25 fps
+  and the games at 8-11 fps against ~40 native; a CPU-only app (ClockTest)
+  showed it was all at startup: 37.7 s in the first frame of THPS2. Every
+  small mmap walked the whole 6 GiB arena page by page past the app's 4 GiB
+  block, and softpipe alone makes 771 of them per GL context. miniBox
+  569fe39 (chimera-common-minibox, local branch fast-mmap-placement) keeps a
+  free count per 512-page group and steps over whole groups - same answers
+  (20,928 syscalls of a THPS2 run identical old vs new, and a 20,000-step
+  unit test against the old walk). Now: THPS2 first frame 0.87 s, games
+  34-37 fps in the sandbox. The touchHLE core needs a Chimera built with it.
 
 ### An app that exits (2026-10-02)
 

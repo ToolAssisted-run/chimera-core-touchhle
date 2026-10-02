@@ -12,8 +12,8 @@ the checkout stays clean:
      bundled libstdc++ and the SDK.
 
 Needs: a clang that targets arm-apple-ios (clang 12 is what upstream tests;
-newer ones work), touchHLE's common-3.0.sdk (its ld and lipo), and a native
-touchHLE binary for the dump.
+newer ones work), touchHLE's common-3.0.sdk (its ld and lipo), and the native
+reference (or upstream's touchHLE) for the symbol dump.
 
 usage: build-testapp.py --touchhle <binary> --sdk <common-3.0.sdk> [--clang <clang>] [--out <dir>]
 """
@@ -29,7 +29,8 @@ upstream = os.path.join(root, 'extern', 'touchHLE')
 tests = os.path.join(upstream, 'tests')
 
 ap = argparse.ArgumentParser()
-ap.add_argument('--touchhle', required=True, help='a native touchHLE binary, for --dump=symbols')
+ap.add_argument('--touchhle', required=True,
+                help="run-native, or upstream's touchHLE binary: either dumps the symbols touchHLE implements")
 ap.add_argument('--sdk', required=True, help="touchHLE's common-3.0.sdk directory")
 ap.add_argument('--clang', default=shutil.which('clang') or '/usr/lib/llvm-20/bin/clang')
 ap.add_argument('--out', default=os.path.join(root, 'build', 'testapp'))
@@ -65,7 +66,11 @@ def clang(output, sources, extra):
 
 # 1. the symbols touchHLE implements
 symbols = os.path.join(stubs, 'SYMBOLS.txt')
-subprocess.run([os.path.abspath(args.touchhle), '--dump=symbols', '--dump-file=' + symbols, '--headless'],
+# run-native (this core's reference) or upstream's own touchHLE binary
+dump = ([os.path.abspath(args.touchhle), '--dump-symbols', symbols]
+        if os.path.basename(args.touchhle) == 'run-native'
+        else [os.path.abspath(args.touchhle), '--dump=symbols', '--dump-file=' + symbols, '--headless'])
+subprocess.run(dump,
                check=True, capture_output=True, cwd=out)  # its log file lands there
 
 # 2. one stub source per library: a "// /path" comment starts a library, and

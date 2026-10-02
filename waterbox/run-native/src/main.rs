@@ -4,6 +4,8 @@
 //! time with that frame's input - but on the host, where a debugger works.
 //!
 //! usage: run-native <app.ipa> [options]
+//!        run-native --dump-symbols FILE   (touchHLE's symbol list, for the
+//!                                          test apps' stub libraries)
 //!   --frames N              frames to run (default 600)
 //!   --setting KEY=VALUE     a setting, as waterbox.config names it (repeatable)
 //!   --touch F:FINGER:X:Y    from frame F, finger 1 or 2 touches X,Y (0..65535)
@@ -95,6 +97,14 @@ enum Change {
 
 fn main() {
     let mut args = std::env::args().skip(1);
+    if std::env::args().nth(1).as_deref() == Some("--dump-symbols") {
+        let path = std::env::args().nth(2).expect("--dump-symbols FILE");
+        if let Err(e) = core::dump_symbols(&path) {
+            eprintln!("run-native: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let mut app = None;
     let mut frames: u64 = 600;
     let mut settings: BTreeMap<String, String> = BTreeMap::new();

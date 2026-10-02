@@ -8,6 +8,8 @@
 #![allow(non_snake_case)]
 #![allow(clippy::missing_safety_doc)]
 
+pub mod mathlib;
+
 use serde_json::Value;
 use std::ffi::CString;
 use std::io::Read;
@@ -84,7 +86,7 @@ impl Settings {
     pub fn parse(json: &str) -> Result<Settings, String> {
         let mut s = Settings {
             options: Vec::new(),
-            rtc_start: 946_684_800, // 2000-01-01
+            rtc_start: 1_262_304_000, // 2010-01-01
             cpu_hz: 412_000_000,
             app_args: Vec::new(),
         };
@@ -112,9 +114,13 @@ impl Settings {
                     _ => return Err(format!("orientation: unknown value {text:?}")),
                 },
                 "rtc_start" => {
+                    // not before 2001-01-01: touchHLE counts its NSDates and
+                    // CFAbsoluteTimes from there and expects to be after it
                     s.rtc_start = text
                         .parse::<u64>()
-                        .map_err(|_| format!("rtc_start: {text:?} is not a time"))?
+                        .ok()
+                        .filter(|&t| t >= 978_307_200)
+                        .ok_or_else(|| format!("rtc_start: {text:?} is not a time from 2001 on"))?
                 }
                 "cpu_mhz" => {
                     let mhz: u64 = text
@@ -180,6 +186,21 @@ pub fn start(
     chimera::boot(args);
     core().running = true;
     Ok(())
+}
+
+/// Write the list of symbols touchHLE implements to `path`, as upstream's
+/// `--dump=symbols` does: build-testapp.py builds TestApp's stub libraries
+/// from it.
+pub fn dump_symbols(path: &str) -> Result<(), String> {
+    touchHLE::main(
+        [
+            "touchHLE".to_string(),
+            "--dump=symbols".to_string(),
+            format!("--dump-file={path}"),
+            "--headless".to_string(),
+        ]
+        .into_iter(),
+    )
 }
 
 fn read_mount(name: &str) -> Result<Vec<u8>, String> {

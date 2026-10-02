@@ -481,7 +481,7 @@ diff --git a/src/chimera/window.rs b/src/chimera/window.rs
 new file mode 100644
 --- /dev/null
 +++ b/src/chimera/window.rs
-@@ -0,0 +1,654 @@
+@@ -0,0 +1,674 @@
 +/*
 + * This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1027,6 +1027,26 @@ new file mode 100644
 +            return;
 +        }
 +        self.device_orientation = new_orientation;
++        // The screen changes shape, and OSMesa only learns a buffer's size
++        // when a context is bound to it - which touchHLE skips for a context
++        // that is already current. So the current one is bound again now, or
++        // it keeps drawing rows of the old width into a buffer read with the
++        // new one (Castle of Magic turns itself sideways at its first frame).
++        let current = unsafe { OSMesaGetCurrentContext() };
++        if !current.is_null() {
++            let (w, h) = size_for_orientation(self.device_family, self.device_orientation);
++            unsafe {
++                let ok = OSMesaMakeCurrent(
++                    current,
++                    self.screen.as_mut_ptr() as *mut c_void,
++                    GL_UNSIGNED_BYTE,
++                    w as i32,
++                    h as i32,
++                );
++                assert!(ok != 0, "OSMesaMakeCurrent failed");
++                OSMesaPixelStore(OSMESA_Y_UP, 0);
++            }
++        }
 +        if self.splash_image.is_some() {
 +            self.display_splash();
 +        }

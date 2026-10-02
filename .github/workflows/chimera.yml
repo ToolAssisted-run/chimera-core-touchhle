@@ -1,0 +1,163 @@
+name: chimera waterbox core
+
+# The core as Chimera ships it: a sandboxed core.wbx package.
+#
+# touchHLE brings its own content: the gate runs on touchHLE's own TestApp
+# (its UIKit screen and its 105 CLI tests, built from upstream's source with
+# clang and touchHLE's open-source iPhone OS 3.0 SDK) and this repository's
+# SoundTest, SaveTest and ClockTest - nothing that cannot be distributed. So
+# every leg but the games runs here: native == sandbox, savestates every frame
+# and across hosts, the clock, sound, save data and the package in the engine.
+# The games (decrypted .ipa files) only run where someone has them.
+#
+# It is a Rust core: the guest is built with a nightly toolchain against a
+# custom target. touchHLE is the extern/touchHLE submodule (with its own
+# dynarmic, OpenAL Soft and stb submodules), patched into its working tree at
+# build time; extern/ext-boost carries the headers dynarmic needs.
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: 'dev (rolling) or nightly (dated). Blank means dev.'
+        required: false
+        default: ''
+        type: string
+  schedule:
+    # 04:00 UTC. A nightly is published only when main moved since the last one;
+    # the reusable workflow checks, so an unchanged core costs one idle run.
+    - cron: '0 4 * * *'
+
+# Keyed by the EVENT as well as the ref: the nightly schedule and a push to
+# main are the same workflow on the same ref, so without it the one that starts
+# second cancels the first (see chimera-core-ruffle, 2026-09-12).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  CHIMERA_REF: main
+
+jobs:
+
+  gate:
+    name: "gate (TestApp, the repository's apps, the package in the engine)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Check out Chimera (the engine, chimera-run, and miniBox)
+        uses: actions/checkout@v6
+        with:
+          repository: ToolAssisted-run/chimera
+          ref: ${{ env.CHIMERA_REF }}
+          path: chimera-checkout
+          submodules: recursive
+
+      - name: Install build dependencies
+        # clang targets the iPhone (TestApp); ffmpeg reads the engine leg's
+        # screenshots; mono and .NET build Chimera for chimera-run and the
+        # contract tests.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends meson ninja-build build-essential cmake pkg-config python3 bison flex python3-mako python3-packaging clang ffmpeg mono-complete libgl1-mesa-dev libx11-dev libxext-dev libasound2-dev
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0'
+
+      - name: Rust (nightly: the guest needs -Z build-std, and the reference is built with the same)
+        run: |
+          rustup toolchain install nightly --profile minimal -c rust-src
+          rustup default nightly
+          rustc --version && cargo --version
+
+      - name: Build Chimera (the engine and chimera-run)
+        working-directory: chimera-checkout
+        run: |
+          meson setup build/meson-linux --prefix "$PWD/build" --libdir dll
+          meson compile -C build/meson-linux
+          meson install -C build/meson-linux
+          dotnet build source/gui/Chimera.sln -c Release /nodeReuse:false -p:UseSharedCompilation=false
+
+      - name: Build miniBox (host + C++ guest toolchain)
+        run: |
+          mb="$PWD/chimera-checkout/extern/chimera-common-minibox"
+          [ -f "$mb/build/meson-linux/build.ninja" ] || meson setup "$mb/build/meson-linux" "$mb"
+          meson compile -C "$mb/build/meson-linux"
+          [ -f "$mb/build/meson-cpp/build.ninja" ] || meson setup "$mb/build/meson-cpp" "$mb" -Dguest_cpp=true
+          meson compile -C "$mb/build/meson-cpp"
+
+      - name: Cache Mesa (both flavors)
+        # setup-mesa.sh pins the release by SHA256 and its options are in the
+        # script, so the script IS the key.
+        uses: actions/cache@v4
+        with:
+          path: build/mesa
+          key: mesa-24.0.9-${{ runner.os }}-${{ hashFiles('waterbox/setup-mesa.sh') }}-${{ hashFiles('chimera-checkout/extern/chimera-common-minibox/.git') }}
+
+      - name: Build and install the core package
+        # The commit is the core's authoritative version: this build is the one
+        # that publishes the artifact, so what it stamps is what a movie can
+        # cite. A package built by hand stamps "+local" instead.
+        env:
+          CORE_VERSION: ${{ github.sha }}
+        run: ./waterbox/build-package.sh -m "$PWD/chimera-checkout/extern/chimera-common-minibox" -r "$PWD/chimera-checkout"
+
+      - name: Gate
+        # Without -n it builds what the package build did not: the host Mesa,
+        # the native reference, run-wbx, touchHLE's SDK and the test apps.
+        run: ./waterbox/run-gate.sh -m "$PWD/chimera-checkout/extern/chimera-common-minibox" -r "$PWD/chimera-checkout"
+
+      - name: The package through Chimera's contract tests
+        # Readable, built for an ABI this frontend runs, a working factory,
+        # binding only buttons its controller declares, a stamped version.
+        working-directory: chimera-checkout
+        env:
+          CHIMERA_CORES_DIR: ${{ github.workspace }}/chimera-checkout/build/Cores
+        run: |
+          dotnet test source/gui/Chimera.Tests.Client.Common/Chimera.Tests.Client.Common.csproj \
+            -c Release --nologo \
+            --filter "FullyQualifiedName~InstalledCorePackagesTests|FullyQualifiedName~MnemonicUniquenessTests"
+
+      - name: Publish the core package
+        uses: actions/upload-artifact@v7
+        with:
+          name: touchhle-${{ github.sha }}
+          path: chimera-checkout/build/Cores/touchhle.chimeraCore
+          if-no-files-found: error
+
+      - name: Upload the gate work dir on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gate-work
+          path: |
+            build/gate/
+            build/guest-build.log
+          retention-days: 14
+
+  publish:
+    # What the gate passed, published as this core's own release: a rolling
+    # `dev` on every green push to main, an immutable `nightly-YYYY-MM-DD` from
+    # the scheduled run. Chimera ships no cores; its Core Manager downloads
+    # them from here.
+    name: publish
+    needs: [ gate ]
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    uses: ToolAssisted-run/chimera/.github/workflows/publish-core.yml@main
+    with:
+      core-id: touchhle
+      artifact: touchhle-${{ github.sha }}
+      package: touchhle.chimeraCore
+      kind: ${{ github.event.inputs.kind }}
