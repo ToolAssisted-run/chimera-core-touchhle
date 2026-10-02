@@ -112,8 +112,17 @@ ends depends only on the machine, never on the host.
 - [x] M3 filesystem (patch 0003): Documents, Library/{Preferences,Caches} and
   tmp exist only in memory (`FileLocation::Memory`), directories list in name
   order (a BTreeMap in this build). Save-data export/import is still to do.
-- [ ] M4 sound: OpenAL Soft rendered a frame at a time (loopback), its mixer
-  choice pinned.
+- [x] M4 sound (patch 0005): every device touchHLE opens - the app's own
+  alcOpenDevice and touchHLE's for AudioQueue and system sounds - is an
+  OpenAL Soft loopback device; at the end of each frame the core renders 735
+  stereo pairs (44.1 kHz / 60) from each and mixes them. OpenAL Soft's output
+  backends are not built at all (its null backend mixes on a thread that
+  sleeps on the host clock), only its SSE2 mixer is (patch 0002). Its event
+  thread still starts per context: miniBox runs it as a green thread that
+  only wakes when a context is torn down. `waterbox/tests/apps/SoundTest` (our
+  own app: silence for 1 s, one OpenAL tone, then two) sounds the same in
+  both flavors, through a savestate before every frame and a state moved to
+  a fresh host (hash of every frame's sound identical).
 - [ ] M5 savestates: the rerecord and session runs work (above); make them
   gate legs on real games.
 - [ ] M6 package, gate, settings; games from the user.

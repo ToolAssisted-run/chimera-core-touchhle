@@ -13,7 +13,8 @@
 //!   --digest-every N        print machine time and a picture hash every N frames
 //!
 //! At the end it prints one line the gate compares between flavors:
-//!   frames=N ticks=I time_ns=T video=<hash of the last picture> WxH running=<0|1>
+//!   frames=N ticks=I time_ns=T video=<hash of the last picture> WxH
+//!   audio=<hash of every frame's sound> running=<0|1>
 
 use std::collections::BTreeMap;
 use touchhle_guest as core;
@@ -25,6 +26,11 @@ fn fnv64(data: &[u8]) -> u64 {
         h = h.wrapping_mul(0x100000001b3);
     }
     h
+}
+
+fn audio() -> &'static [i16] {
+    let n = core::GetAudioSampleCount() as usize * 2;
+    unsafe { std::slice::from_raw_parts(core::GetAudio(), n) }
 }
 
 fn video() -> (&'static [u8], usize, usize) {
@@ -125,6 +131,10 @@ fn main() {
     }
 
     let mut buttons: u64 = 0;
+    // every frame's sound, hashed in order; the loudest sample since the
+    // last digest line
+    let mut audio_hash: u64 = 0xcbf29ce484222325;
+    let mut peak: i32 = 0;
     for frame in 0..frames {
         for change in changes.get(&frame).map(|v| v.as_slice()).unwrap_or(&[]) {
             match *change {
@@ -141,20 +151,29 @@ fn main() {
             }
         }
         core::FrameAdvance(buttons);
+        for s in audio() {
+            for b in s.to_le_bytes() {
+                audio_hash ^= b as u64;
+                audio_hash = audio_hash.wrapping_mul(0x100000001b3);
+            }
+            peak = peak.max((*s as i32).abs());
+        }
         let (pixels, w, h) = video();
         if let Some(path) = shots.get(&frame) {
             write_tga(path, pixels, w, h);
         }
         if digest_every > 0 && (frame + 1) % digest_every == 0 {
             println!(
-                "frame {} ticks={} time_ns={} video={:016x} {}x{}",
+                "frame {} ticks={} time_ns={} video={:016x} {}x{} peak={}",
                 frame + 1,
                 core::GetExecutedTicks(),
                 core::GetMachineTimeNs(),
                 fnv64(pixels),
                 w,
-                h
+                h,
+                peak
             );
+            peak = 0;
         }
         if core::IsRunning() == 0 {
             break;
@@ -162,13 +181,14 @@ fn main() {
     }
     let (pixels, w, h) = video();
     println!(
-        "frames={} ticks={} time_ns={} video={:016x} {}x{} running={}",
+        "frames={} ticks={} time_ns={} video={:016x} {}x{} audio={:016x} running={}",
         core::GetFrameCount(),
         core::GetExecutedTicks(),
         core::GetMachineTimeNs(),
         fnv64(pixels),
         w,
         h,
+        audio_hash,
         core::IsRunning()
     );
 }

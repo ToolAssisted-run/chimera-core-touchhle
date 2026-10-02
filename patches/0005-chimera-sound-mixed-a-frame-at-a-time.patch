@@ -1,0 +1,182 @@
+diff --git a/src/audio/openal.rs b/src/audio/openal.rs
+--- a/src/audio/openal.rs
++++ b/src/audio/openal.rs
+@@ -13,7 +13,115 @@
+ pub use al_sys::al_types;
+ pub use al_sys::alc_defines::*;
+ pub use al_sys::alc_types;
+-pub use al_sys::{alcCloseDevice, alcGetError, alcGetString, alcOpenDevice};
++#[cfg(not(feature = "chimera"))]
++pub use al_sys::{alcCloseDevice, alcOpenDevice};
++pub use al_sys::{alcGetError, alcGetString};
++#[cfg(feature = "chimera")]
++pub use loopback::{alcCloseDevice, alcOpenDevice};
++
++/// Chimera's build has no audio device: every device the app (or touchHLE
++/// itself) opens is an OpenAL Soft LOOPBACK device, which plays nothing by
++/// itself, and at the end of each frame the core asks every one of them for
++/// that frame's samples and mixes them ([render_frame]). OpenAL Soft's own
++/// output backends are not even built (its null backend mixes on a thread
++/// that sleeps on the host's clock).
++#[cfg(feature = "chimera")]
++pub mod loopback {
++    use super::al_sys;
++    use super::alc_types::{ALCchar, ALCdevice, ALCint, ALCsizei};
++
++    /// What every loopback device renders: 44.1 kHz, stereo, 16-bit.
++    pub const RATE: ALCint = 44100;
++    const ALC_FREQUENCY: ALCint = 0x1007;
++    const ALC_FORMAT_CHANNELS_SOFT: ALCint = 0x1990;
++    const ALC_FORMAT_TYPE_SOFT: ALCint = 0x1991;
++    const ALC_STEREO_SOFT: ALCint = 0x1501;
++    const ALC_SHORT_SOFT: ALCint = 0x1402;
++
++    extern "C" {
++        fn alcLoopbackOpenDeviceSOFT(device_name: *const ALCchar) -> *mut ALCdevice;
++        fn alcRenderSamplesSOFT(
++            device: *mut ALCdevice,
++            buffer: *mut std::ffi::c_void,
++            samples: ALCsizei,
++        );
++    }
++
++    // The machine is one thread; the devices in the order they were opened.
++    static mut DEVICES: Vec<*mut ALCdevice> = Vec::new();
++    #[allow(static_mut_refs)]
++    fn devices() -> &'static mut Vec<*mut ALCdevice> {
++        unsafe { &mut DEVICES }
++    }
++
++    /// # Safety
++    /// As OpenAL's alcOpenDevice; the name is ignored.
++    pub unsafe fn alcOpenDevice(_device_name: *const ALCchar) -> *mut ALCdevice {
++        let device = unsafe { alcLoopbackOpenDeviceSOFT(std::ptr::null()) };
++        if !device.is_null() {
++            devices().push(device);
++        }
++        device
++    }
++
++    /// # Safety
++    /// As OpenAL's alcCloseDevice.
++    pub unsafe fn alcCloseDevice(device: *mut ALCdevice) -> super::alc_types::ALCboolean {
++        devices().retain(|d| *d != device);
++        unsafe { al_sys::alcCloseDevice(device) }
++    }
++
++    /// A context's attributes, with the loopback format the device renders
++    /// in put in place of any the app asked for.
++    ///
++    /// # Safety
++    /// `attrlist` is null or a zero-terminated attribute list.
++    pub unsafe fn attributes(attrlist: *const ALCint) -> Vec<ALCint> {
++        let mut out = Vec::new();
++        if !attrlist.is_null() {
++            let mut p = attrlist;
++            while unsafe { *p } != 0 {
++                let (key, value) = unsafe { (*p, *p.add(1)) };
++                if ![
++                    ALC_FREQUENCY,
++                    ALC_FORMAT_CHANNELS_SOFT,
++                    ALC_FORMAT_TYPE_SOFT,
++                ]
++                .contains(&key)
++                {
++                    out.extend([key, value]);
++                }
++                p = unsafe { p.add(2) };
++            }
++        }
++        out.extend([
++            ALC_FREQUENCY,
++            RATE,
++            ALC_FORMAT_CHANNELS_SOFT,
++            ALC_STEREO_SOFT,
++            ALC_FORMAT_TYPE_SOFT,
++            ALC_SHORT_SOFT,
++            0,
++        ]);
++        out
++    }
++
++    /// Render `out.len() / 2` stereo sample pairs from every open device and
++    /// mix them into `out`.
++    pub fn render_frame(out: &mut [i16]) {
++        out.fill(0);
++        let pairs = out.len() / 2;
++        let mut scratch = vec![0i16; pairs * 2];
++        for &device in devices().iter() {
++            unsafe {
++                alcRenderSamplesSOFT(device, scratch.as_mut_ptr() as *mut _, pairs as ALCsizei)
++            };
++            for (o, s) in out.iter_mut().zip(&scratch) {
++                *o = o.saturating_add(*s);
++            }
++        }
++    }
++}
+ 
+ use al_types::*;
+ 
+@@ -45,7 +153,7 @@
+ 
+ impl OpenALContext {
+     pub fn new(_manager: &mut OpenALManager) -> Result<Self, String> {
+-        let device = unsafe { al_sys::alcOpenDevice(std::ptr::null()) };
++        let device = unsafe { alcOpenDevice(std::ptr::null()) };
+         if device.is_null() {
+             return Err("Could not open OpenAL device".to_string());
+         }
+@@ -57,6 +165,11 @@
+         device: *mut ALCdevice,
+         attrlist: *const ALCint,
+     ) -> Result<Self, String> {
++        // a loopback device needs to be told the format it renders in
++        #[cfg(feature = "chimera")]
++        let attributes = unsafe { loopback::attributes(attrlist) };
++        #[cfg(feature = "chimera")]
++        let attrlist = attributes.as_ptr();
+         let context = unsafe { al_sys::alcCreateContext(device, attrlist) };
+         if context.is_null() {
+             return Err("Could not open OpenAL context".to_string());
+diff --git a/src/chimera/mod.rs b/src/chimera/mod.rs
+--- a/src/chimera/mod.rs
++++ b/src/chimera/mod.rs
+@@ -44,12 +44,15 @@
+     frame: u64,
+     /// Set when touchHLE's main returned: the app exited, or failed to start.
+     exited: Option<Result<(), String>>,
++    /// The last frame's sound.
++    audio: Vec<i16>,
+ }
+ static mut STATE: State = State {
+     machine: None,
+     yielder: std::ptr::null(),
+     frame: 0,
+     exited: None,
++    audio: Vec::new(),
+ };
+ // The machine is one thread.
+ #[allow(static_mut_refs)]
+@@ -155,9 +158,21 @@
+     unreachable!("a machine whose app exited was resumed");
+ }
+ 
++/// The sound of the frame just ended: stereo pairs at 44.1 kHz.
++pub fn audio() -> &'static [i16] {
++    state().audio.as_slice()
++}
++
++/// Sample pairs in a frame: 44100 / 60.
++pub const AUDIO_PAIRS_PER_FRAME: usize = 735;
++
+ fn end_frame(env: &mut Environment) {
+     let s = state();
+     s.frame += 1;
++    // The frame's sound, mixed now: every device's sources advance by
++    // exactly one frame of samples, at the same point of every run.
++    s.audio.resize(AUDIO_PAIRS_PER_FRAME * 2, 0);
++    crate::audio::openal::loopback::render_frame(&mut s.audio);
+     let yielder = s.yielder;
+     assert!(!yielder.is_null());
+     // Back to the core until the next frame; this frame's picture is already

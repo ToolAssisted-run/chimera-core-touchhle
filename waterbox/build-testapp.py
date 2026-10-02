@@ -65,7 +65,7 @@ def clang(output, sources, extra):
 
 # 1. the symbols touchHLE implements
 symbols = os.path.join(stubs, 'SYMBOLS.txt')
-subprocess.run([args.touchhle, '--dump=symbols', '--dump-file=' + symbols, '--headless'],
+subprocess.run([os.path.abspath(args.touchhle), '--dump=symbols', '--dump-file=' + symbols, '--headless'],
                check=True, capture_output=True, cwd=out)  # its log file lands there
 
 # 2. one stub source per library: a "// /path" comment starts a library, and
@@ -136,17 +136,38 @@ clang(os.path.join(app, 'TestApp'), [s for s in sources if not s.endswith('.cpp'
       extra + ['-lstdc++.6.0.9'] + link_extra)
 print('built:', os.path.join(app, 'TestApp'))
 
-# 4. as an .ipa, the form the core takes a game in: Payload/TestApp.app/...,
+# 4. as an .ipa, the form the core takes a game in: Payload/<Name>.app/...,
 #    every entry dated the same, so the file is a function of its contents
 import zipfile
-ipa = os.path.join(out, 'TestApp.ipa')
-with zipfile.ZipFile(ipa, 'w', zipfile.ZIP_DEFLATED) as z:
-    for dirpath, dirnames, filenames in os.walk(app):
-        dirnames.sort()
-        for f in sorted(filenames):
-            full = os.path.join(dirpath, f)
-            info = zipfile.ZipInfo('Payload/TestApp.app/' + os.path.relpath(full, app), (2026, 10, 2, 0, 0, 0))
-            info.external_attr = 0o100755 << 16 if f == 'TestApp' else 0o100644 << 16
-            info.compress_type = zipfile.ZIP_DEFLATED
-            z.writestr(info, open(full, 'rb').read())
-print('built:', ipa)
+
+
+def make_ipa(name, app_dir):
+    ipa = os.path.join(out, name + '.ipa')
+    with zipfile.ZipFile(ipa, 'w', zipfile.ZIP_DEFLATED) as z:
+        for dirpath, dirnames, filenames in os.walk(app_dir):
+            dirnames.sort()
+            for f in sorted(filenames):
+                full = os.path.join(dirpath, f)
+                info = zipfile.ZipInfo('Payload/%s.app/' % name + os.path.relpath(full, app_dir),
+                                       (2026, 10, 2, 0, 0, 0))
+                info.external_attr = 0o100755 << 16 if f == name else 0o100644 << 16
+                info.compress_type = zipfile.ZIP_DEFLATED
+                z.writestr(info, open(full, 'rb').read())
+    print('built:', ipa)
+
+
+make_ipa('TestApp', app)
+
+# 5. this repository's own test apps (waterbox/tests/apps/<Name>/: C sources
+#    and an Info.plist), against the same stubs
+apps = os.path.join(here, 'tests', 'apps')
+for name in sorted(os.listdir(apps)) if os.path.isdir(apps) else []:
+    src = os.path.join(apps, name)
+    app_dir = os.path.join(out, name + '.app')
+    shutil.rmtree(app_dir, ignore_errors=True)
+    os.makedirs(app_dir)
+    shutil.copy(os.path.join(src, 'Info.plist'), app_dir)
+    c_sources = sorted(os.path.join(src, f) for f in os.listdir(src) if f.endswith('.c'))
+    clang(os.path.join(app_dir, name), c_sources,
+          ['-mlinker-version=253', '-L' + stubs_lib, '-F' + stubs_fw] + link_extra)
+    make_ipa(name, app_dir)

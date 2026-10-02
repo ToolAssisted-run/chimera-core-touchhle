@@ -81,7 +81,8 @@ static char g_settings[8192];
 
 static i32fn g_Init, g_IsRunning, g_GetVideoWidth, g_GetVideoHeight;
 static u64fn g_GetFrameCount, g_GetMachineTimeNs, g_GetExecutedTicks;
-static ptrfn g_GetLoadError, g_GetVideoBgra;
+static ptrfn g_GetLoadError, g_GetVideoBgra, g_GetAudio;
+static i32fn g_GetAudioSampleCount;
 static framefn g_FrameAdvance;
 static setfn g_SetAxis;
 
@@ -139,6 +140,8 @@ static void build_host(void)
 	g_GetVideoBgra = (ptrfn)proc("GetVideoBgra");
 	g_GetVideoWidth = (i32fn)proc("GetVideoWidth");
 	g_GetVideoHeight = (i32fn)proc("GetVideoHeight");
+	g_GetAudio = (ptrfn)proc("GetAudio");
+	g_GetAudioSampleCount = (i32fn)proc("GetAudioSampleCount");
 
 	if (g_Init() != 1)
 	{
@@ -256,6 +259,8 @@ int main(int argc, char **argv)
 	membuf state = { 0 };
 	mb_return r;
 	uint64_t buttons = 0;
+	uint64_t audioHash = 0xcbf29ce484222325ull;
+	int peak = 0;
 	for (long frame = 0; frame < frames; frame++)
 	{
 		if (session && frame == frames / 2)
@@ -298,22 +303,38 @@ int main(int argc, char **argv)
 			}
 		}
 		g_FrameAdvance(buttons);
+		{
+			const int16_t *a = (const int16_t *)g_GetAudio();
+			const int n = g_GetAudioSampleCount() * 2;
+			for (int i = 0; i < n; i++)
+			{
+				const uint16_t v = (uint16_t)a[i];
+				audioHash ^= v & 0xff; audioHash *= 0x100000001b3ull;
+				audioHash ^= v >> 8; audioHash *= 0x100000001b3ull;
+				const int m = a[i] < 0 ? -a[i] : a[i];
+				if (m > peak) peak = m;
+			}
+		}
 		const int w = g_GetVideoWidth(), h = g_GetVideoHeight();
 		const uint8_t *px = (const uint8_t *)g_GetVideoBgra();
 		for (int i = 0; i < nshots; i++)
 			if (shots[i].frame == frame) write_tga(shots[i].path, px, w, h);
 		if (digestEvery > 0 && (frame + 1) % digestEvery == 0)
-			printf("frame %ld ticks=%llu time_ns=%llu video=%016llx %dx%d\n", frame + 1,
+		{
+			printf("frame %ld ticks=%llu time_ns=%llu video=%016llx %dx%d peak=%d\n", frame + 1,
 				(unsigned long long)g_GetExecutedTicks(), (unsigned long long)g_GetMachineTimeNs(),
-				(unsigned long long)fnv64(px, (size_t)w * h * 4), w, h);
+				(unsigned long long)fnv64(px, (size_t)w * h * 4), w, h, peak);
+			peak = 0;
+		}
 		if (!g_IsRunning()) break;
 	}
 	const int w = g_GetVideoWidth(), h = g_GetVideoHeight();
 	const uint8_t *px = (const uint8_t *)g_GetVideoBgra();
-	printf("frames=%llu ticks=%llu time_ns=%llu video=%016llx %dx%d running=%d\n",
+	printf("frames=%llu ticks=%llu time_ns=%llu video=%016llx %dx%d audio=%016llx running=%d\n",
 		(unsigned long long)g_GetFrameCount(), (unsigned long long)g_GetExecutedTicks(),
 		(unsigned long long)g_GetMachineTimeNs(),
-		(unsigned long long)fnv64(px, (size_t)w * h * 4), w, h, g_IsRunning());
+		(unsigned long long)fnv64(px, (size_t)w * h * 4), w, h,
+		(unsigned long long)audioHash, g_IsRunning());
 	if (stateOut)
 	{
 		state.len = 0;

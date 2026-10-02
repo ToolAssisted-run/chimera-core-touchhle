@@ -22,23 +22,21 @@ pub const AXES: &[&str] = &["Touch 1 X", "Touch 1 Y", "Touch 2 X", "Touch 2 Y", 
 const AXIS_TILT_X: usize = 4;
 const AXIS_TILT_Y: usize = 5;
 
-/// 44.1 kHz stereo at 60 frames a second.
-pub const AUDIO_RATE: u32 = 44100;
-pub const AUDIO_PAIRS_PER_FRAME: usize = (AUDIO_RATE / 60) as usize;
+/// 44.1 kHz stereo at 60 frames a second: OpenAL's mix of every device the
+/// app opened, rendered at the end of each frame.
+pub use chimera::AUDIO_PAIRS_PER_FRAME;
 
 struct Core {
     /// Why Init refused, NUL-terminated.
     load_error: Vec<u8>,
     buttons: u64,
     axes: [i32; 6],
-    audio: Vec<i16>,
     running: bool,
 }
 static mut CORE: Core = Core {
     load_error: Vec::new(),
     buttons: 0,
     axes: [32768, 32768, 32768, 32768, 0, 0],
-    audio: Vec::new(),
     running: false,
 };
 
@@ -207,9 +205,7 @@ pub fn start(bundle_path: &str, settings: &Settings) -> Result<(), String> {
         args.extend(settings.app_args.iter().cloned());
     }
     chimera::boot(args);
-    let c = core();
-    c.audio = vec![0; AUDIO_PAIRS_PER_FRAME * 2];
-    c.running = true;
+    core().running = true;
     Ok(())
 }
 
@@ -368,8 +364,15 @@ pub extern "C" fn GetVsyncDenominator() -> i32 {
 
 #[no_mangle]
 pub extern "C" fn GetAudio() -> *const i16 {
-    core().audio.as_ptr()
+    let audio = chimera::audio();
+    if audio.is_empty() {
+        SILENCE.as_ptr()
+    } else {
+        audio.as_ptr()
+    }
 }
+/// Before the first frame's sound.
+static SILENCE: [i16; AUDIO_PAIRS_PER_FRAME * 2] = [0; AUDIO_PAIRS_PER_FRAME * 2];
 
 #[no_mangle]
 pub extern "C" fn GetAudioSampleCount() -> i32 {
