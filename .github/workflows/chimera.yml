@@ -74,7 +74,7 @@ jobs:
         with:
           dotnet-version: '8.0'
 
-      - name: Rust (nightly: the guest needs -Z build-std, and the reference is built with the same)
+      - name: "Rust (nightly: the guest needs -Z build-std, and the reference is built with the same)"
         run: |
           rustup toolchain install nightly --profile minimal -c rust-src
           rustup default nightly
