@@ -1,0 +1,40 @@
+{
+  "_comment": [
+    "The screen under the mouse: its left button is the first finger, where the pointer is",
+    "on the picture. The second finger has no host control (a movie or TAStudio places it).",
+    "The first pad's left stick tilts the device, as it does in touchHLE."
+  ],
+  "AllTrollers": {
+    "iPhone": {
+      "Touch 1": "WMouse L",
+      "Touch 2": ""
+    }
+  },
+  "AllTrollersAutoFire": {
+    "iPhone": {}
+  },
+  "AllTrollersAnalog": {
+    "iPhone": {
+      "Touch 1 X": {
+        "Value": "WMouse X",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "Touch 1 Y": {
+        "Value": "WMouse Y",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "Tilt X": {
+        "Value": "X1 LeftThumbX Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.1
+      },
+      "Tilt Y": {
+        "Value": "X1 LeftThumbY Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.1
+      }
+    }
+  }
+}

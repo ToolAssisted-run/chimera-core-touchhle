@@ -1,0 +1,65 @@
+diff --git a/src/chimera/mod.rs b/src/chimera/mod.rs
+--- a/src/chimera/mod.rs
++++ b/src/chimera/mod.rs
+@@ -177,6 +177,13 @@
+     out
+ }
+ 
++/// The app's memory: its whole 32-bit address space, one block whose
++/// address never changes. Asking for it makes it, so it can be asked before
++/// the machine starts.
++pub fn app_memory() -> (*mut u8, usize) {
++    (crate::mem::chimera_block(), 1usize << 32)
++}
++
+ /// Frames completed.
+ pub fn frame_count() -> u64 {
+     state().frame
+diff --git a/src/mem.rs b/src/mem.rs
+--- a/src/mem.rs
++++ b/src/mem.rs
+@@ -257,12 +257,30 @@
+ 
+ impl Drop for Mem {
+     fn drop(&mut self) {
++        // (Chimera's block outlives every Mem: see chimera_block)
++        #[cfg(not(feature = "chimera"))]
+         unsafe {
+             crate::mem::host::free_memory(self.bytes.cast(), std::mem::size_of::<Bytes>()).unwrap();
+         }
+     }
+ }
+ 
++/// Chimera's build: the one block of guest memory, made the first time it is
++/// asked for and never given back. The core asks before the machine starts,
++/// so it can tell the frontend where the app's memory is (a memory domain is
++/// published once, right after the core loads); Mem::new then takes it.
++#[cfg(feature = "chimera")]
++pub fn chimera_block() -> *mut u8 {
++    static mut BLOCK: *mut u8 = std::ptr::null_mut();
++    unsafe {
++        if BLOCK.is_null() {
++            BLOCK =
++                crate::mem::host::allocate_memory(std::mem::size_of::<Bytes>()).unwrap() as *mut u8;
++        }
++        BLOCK
++    }
++}
++
+ impl Mem {
+     /// [According to Apple](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Multithreading/CreatingThreads/CreatingThreads.html)
+     /// among others, the iPhone OS main thread stack size is 1MiB.
+@@ -281,7 +299,13 @@
+     pub fn new() -> Mem {
+         let size = std::mem::size_of::<Bytes>();
+ 
++        #[cfg(not(feature = "chimera"))]
+         let ptr = unsafe { crate::mem::host::allocate_memory(size).unwrap() };
++        #[cfg(feature = "chimera")]
++        let ptr = {
++            let _ = size;
++            chimera_block() as *mut std::ffi::c_void
++        };
+ 
+         assert_eq!(
+             ptr as usize & PAGE_SIZE_ALIGN_MASK as usize,

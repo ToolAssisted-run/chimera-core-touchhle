@@ -11,6 +11,11 @@
 //!   --tilt F:X:Y            from frame F, tilt (-32768..32767 each)
 //!   --screenshot F=PATH     write frame F's picture as a TGA
 //!   --digest-every N        print machine time and a picture hash every N frames
+//!   --savedata ZIP          start from this save data (what --export-save wrote)
+//!   --export-save ZIP       at the end, write what the app saved, as the
+//!                           frontend's Export Save Data does
+//!   --stall F:MS            before frame F, keep the host busy for MS ms: the
+//!                           machine must not notice (its clock is its own)
 //!
 //! At the end it prints one line the gate compares between flavors:
 //!   frames=N ticks=I time_ns=T video=<hash of the last picture> WxH
@@ -51,6 +56,37 @@ fn write_tga(path: &str, bgra: &[u8], w: usize, h: usize) {
     std::fs::write(path, out).unwrap_or_else(|e| panic!("{path}: {e}"));
 }
 
+/// What Export Save Data would write: every file the core lists, in a zip,
+/// every entry dated the same so the file is a function of the save.
+fn write_save_zip(path: &str) {
+    let n = core::GetSaveDataFileCount();
+    for i in 0..n {
+        let name = unsafe { std::ffi::CStr::from_ptr(core::GetSaveDataFileName(i) as *const _) };
+        let size = core::GetSaveDataFileSize(i) as usize;
+        let data = unsafe { std::slice::from_raw_parts(core::GetSaveDataFileBuffer(i), size) };
+        println!("save {} {} {:016x}", name.to_string_lossy(), size, fnv64(data));
+    }
+    let mut out = Vec::new();
+    {
+        let mut z = zip::ZipWriter::new(std::io::Cursor::new(&mut out));
+        let options = zip::write::FileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .last_modified_time(zip::DateTime::from_date_and_time(2026, 10, 2, 0, 0, 0).unwrap());
+        for i in 0..n {
+            let name = unsafe { std::ffi::CStr::from_ptr(core::GetSaveDataFileName(i) as *const _) }
+                .to_string_lossy()
+                .into_owned();
+            let size = core::GetSaveDataFileSize(i) as usize;
+            let data = unsafe { std::slice::from_raw_parts(core::GetSaveDataFileBuffer(i), size) };
+            z.start_file(name, options).unwrap();
+            std::io::Write::write_all(&mut z, data).unwrap();
+        }
+        z.finish().unwrap();
+    }
+    std::fs::write(path, out).unwrap_or_else(|e| panic!("{path}: {e}"));
+    eprintln!("run-native: exported {n} save files to {path}");
+}
+
 enum Change {
     Touch(usize, i32, i32),
     Release(usize),
@@ -65,6 +101,9 @@ fn main() {
     let mut changes: BTreeMap<u64, Vec<Change>> = BTreeMap::new();
     let mut shots: BTreeMap<u64, String> = BTreeMap::new();
     let mut digest_every: u64 = 0;
+    let mut savedata: Option<String> = None;
+    let mut export_save: Option<String> = None;
+    let mut stall: Option<(u64, u64)> = None;
     let num = |s: &str| -> i64 { s.parse().unwrap_or_else(|_| panic!("not a number: {s}")) };
     while let Some(a) = args.next() {
         let mut value = || args.next().unwrap_or_else(|| panic!("{a} needs a value"));
@@ -106,6 +145,13 @@ fn main() {
                 shots.insert(num(f) as u64, p.to_string());
             }
             "--digest-every" => digest_every = num(&value()) as u64,
+            "--savedata" => savedata = Some(value()),
+            "--export-save" => export_save = Some(value()),
+            "--stall" => {
+                let v = value();
+                let (f, ms) = v.split_once(':').expect("--stall F:MS");
+                stall = Some((num(f) as u64, num(ms) as u64));
+            }
             _ if a.starts_with("--") => panic!("unknown option {a}"),
             _ => app = Some(a),
         }
@@ -125,7 +171,17 @@ fn main() {
         eprintln!("run-native: {e}");
         std::process::exit(2)
     });
-    if let Err(e) = core::start(&app, &settings) {
+    let save_data = match savedata {
+        None => Vec::new(),
+        Some(path) => {
+            let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+            core::read_save_zip(&bytes).unwrap_or_else(|e| {
+                eprintln!("run-native: the save data {path}: {e}");
+                std::process::exit(1)
+            })
+        }
+    };
+    if let Err(e) = core::start(&app, &settings, save_data) {
         eprintln!("run-native: {e}");
         std::process::exit(1);
     }
@@ -136,6 +192,13 @@ fn main() {
     let mut audio_hash: u64 = 0xcbf29ce484222325;
     let mut peak: i32 = 0;
     for frame in 0..frames {
+        if let Some((at, ms)) = stall {
+            if at == frame {
+                // busy, not asleep: a host clock read anywhere would see it
+                let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+                while std::time::Instant::now() < until {}
+            }
+        }
         for change in changes.get(&frame).map(|v| v.as_slice()).unwrap_or(&[]) {
             match *change {
                 Change::Touch(finger, x, y) => {
@@ -178,6 +241,9 @@ fn main() {
         if core::IsRunning() == 0 {
             break;
         }
+    }
+    if let Some(path) = export_save {
+        write_save_zip(&path);
     }
     let (pixels, w, h) = video();
     println!(

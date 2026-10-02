@@ -1176,13 +1176,16 @@ name = "touchhle-run-native"
 version = "0.0.0"
 dependencies = [
  "touchhle_guest",
+ "zip",
 ]
 
 [[package]]
 name = "touchhle_guest"
 version = "0.0.0"
 dependencies = [
+ "serde_json",
  "touchHLE",
+ "zip",
 ]
 
 [[package]]

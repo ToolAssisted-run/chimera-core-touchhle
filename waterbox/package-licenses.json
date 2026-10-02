@@ -1,0 +1,121 @@
+{
+  "package": "touchhle",
+  "effectiveTerms": "MPL-2.0, with GPL-2.0-or-later and LGPL-2.0-or-later parts",
+  "commercialUse": "allowed under the licences of its parts",
+  "note": "The core is touchHLE (MPL-2.0) built with this repository's patches (MPL-2.0) and integration (MIT). Compiled in: dynarmic (0BSD) with fmt, mcl, robin-map, Zydis and Zycore (MIT) and xbyak (BSD-3-Clause), header-only Boost (BSL-1.0), OpenAL Soft (LGPL-2.0-or-later, statically linked: this repository and the sources linked here are what relinking it takes), stb_image (MIT or public domain), the PowerVR SDK's PVRTC decompressor (MIT), Mesa's softpipe and OSMesa (MIT), and touchHLE's Rust dependencies (MIT and/or Apache-2.0, as touchHLE --copyright lists them). The core also CARRIES, as files the emulated apps load, the iPhone OS libraries touchHLE ships: libstdc++ and libgcc (GPL-2.0-or-later, from Apple's open-source GCC; sources linked in touchHLE_dylibs/README.md), zlib (zlib), SQLite (public domain) and libxml2 (MIT), and the Liberation and Noto Sans JP fonts (SIL OFL 1.1). It carries no Apple software and no app.",
+  "components": [
+    {
+      "name": "chimera-core-touchhle (integration)",
+      "license": "MIT, and MPL-2.0 for patches/",
+      "url": "https://github.com/ToolAssisted-run/chimera-core-touchhle",
+      "commit": "{selfCommit}",
+      "file": "LICENSE",
+      "sourceUrl": "https://github.com/ToolAssisted-run/chimera-core-touchhle/archive/{commit}.tar.gz"
+    },
+    {
+      "name": "touchHLE",
+      "license": "MPL-2.0",
+      "url": "https://github.com/touchHLE/touchHLE",
+      "commit": "{submodule:extern/touchHLE}",
+      "file": "extern/touchHLE/LICENSE",
+      "sourceUrl": "https://github.com/touchHLE/touchHLE/archive/{commit}.tar.gz"
+    },
+    {
+      "name": "dynarmic (touchHLE's fork)",
+      "license": "0BSD",
+      "url": "https://github.com/touchHLE/dynarmic",
+      "commit": "{submodule:extern/touchHLE/vendor/dynarmic}",
+      "file": "extern/touchHLE/vendor/dynarmic/LICENSE.txt",
+      "sourceUrl": "https://github.com/touchHLE/dynarmic/archive/{commit}.tar.gz"
+    },
+    {
+      "name": "fmt (dynarmic)",
+      "license": "MIT",
+      "url": "https://github.com/fmtlib/fmt",
+      "file": "extern/touchHLE/vendor/dynarmic/externals/fmt/LICENSE"
+    },
+    {
+      "name": "mcl (dynarmic)",
+      "license": "MIT",
+      "url": "https://github.com/merryhime/mcl",
+      "file": "extern/touchHLE/vendor/dynarmic/externals/mcl/LICENSE"
+    },
+    {
+      "name": "robin-map (dynarmic)",
+      "license": "MIT",
+      "url": "https://github.com/Tessil/robin-map",
+      "file": "extern/touchHLE/vendor/dynarmic/externals/robin-map/LICENSE"
+    },
+    {
+      "name": "Zydis (dynarmic)",
+      "license": "MIT",
+      "url": "https://github.com/zyantific/zydis",
+      "file": "extern/touchHLE/vendor/dynarmic/externals/zydis/LICENSE"
+    },
+    {
+      "name": "Zycore (dynarmic)",
+      "license": "MIT",
+      "url": "https://github.com/zyantific/zycore-c",
+      "file": "extern/touchHLE/vendor/dynarmic/externals/zycore/LICENSE"
+    },
+    {
+      "name": "xbyak (dynarmic)",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/herumi/xbyak",
+      "file": "extern/touchHLE/vendor/dynarmic/externals/xbyak/COPYRIGHT"
+    },
+    {
+      "name": "Boost (header-only, for dynarmic)",
+      "license": "BSL-1.0",
+      "url": "https://github.com/azahar-emu/ext-boost",
+      "commit": "{submodule:extern/ext-boost}",
+      "file": "extern/ext-boost/LICENSE_1_0.txt"
+    },
+    {
+      "name": "OpenAL Soft",
+      "license": "LGPL-2.0-or-later",
+      "url": "https://github.com/kcat/openal-soft",
+      "commit": "{submodule:extern/touchHLE/vendor/openal-soft}",
+      "file": "extern/touchHLE/vendor/openal-soft/COPYING",
+      "sourceUrl": "https://github.com/kcat/openal-soft/archive/{commit}.tar.gz"
+    },
+    {
+      "name": "stb_image",
+      "license": "MIT or public domain",
+      "url": "https://github.com/nothings/stb",
+      "commit": "{submodule:extern/touchHLE/vendor/stb}",
+      "file": "extern/touchHLE/vendor/stb/LICENSE"
+    },
+    {
+      "name": "PVRTC decompressor (PowerVR SDK)",
+      "license": "MIT",
+      "url": "https://github.com/powervr-graphics/Native_SDK",
+      "file": "extern/touchHLE/vendor/PVRTDecompress/LICENSE.md"
+    },
+    {
+      "name": "Mesa (softpipe + OSMesa, the core's OpenGL)",
+      "license": "MIT",
+      "url": "https://gitlab.freedesktop.org/mesa/mesa",
+      "version": "24.0.9",
+      "sourceUrl": "https://archive.mesa3d.org/mesa-24.0.9.tar.xz"
+    },
+    {
+      "name": "iPhone OS libraries touchHLE ships (libstdc++, libgcc, zlib, SQLite, libxml2)",
+      "license": "GPL-2.0-or-later (libstdc++, libgcc); zlib; public domain; MIT",
+      "url": "https://github.com/touchHLE/touchHLE/tree/main/touchHLE_dylibs",
+      "file": "extern/touchHLE/touchHLE_dylibs/README.md"
+    },
+    {
+      "name": "Liberation fonts",
+      "license": "OFL-1.1",
+      "url": "https://github.com/liberationfonts/liberation-fonts",
+      "file": "extern/touchHLE/touchHLE_fonts/LICENSE.liberation"
+    },
+    {
+      "name": "Noto Sans JP",
+      "license": "OFL-1.1",
+      "url": "https://github.com/googlefonts/noto-cjk",
+      "file": "extern/touchHLE/touchHLE_fonts/LICENSE.noto"
+    }
+  ]
+}

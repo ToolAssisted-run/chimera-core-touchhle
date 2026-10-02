@@ -9,6 +9,8 @@ publish = false
 # It draws with the host build of the same pinned Mesa (setup-mesa.sh -n).
 [dependencies]
 touchhle_guest = { path = "../guest" }
+# --export-save writes the zip the frontend would
+zip = { version = "0.6.4", default-features = false, features = ["deflate"] }
 
 [[bin]]
 name = "run-native"

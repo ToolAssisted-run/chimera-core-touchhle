@@ -8,7 +8,9 @@
 #![allow(non_snake_case)]
 #![allow(clippy::missing_safety_doc)]
 
+use serde_json::Value;
 use std::ffi::CString;
+use std::io::Read;
 use touchHLE::chimera;
 
 // ---- The controller, in waterbox.config's order ---------------------------
@@ -32,12 +34,16 @@ struct Core {
     buttons: u64,
     axes: [i32; 6],
     running: bool,
+    /// The save data listed by the last GetSaveDataFileCount, names
+    /// NUL-terminated.
+    saves: Vec<(Vec<u8>, Vec<u8>)>,
 }
 static mut CORE: Core = Core {
     load_error: Vec::new(),
     buttons: 0,
     axes: [32768, 32768, 32768, 32768, 0, 0],
     running: false,
+    saves: Vec::new(),
 };
 
 #[allow(static_mut_refs)]
@@ -53,13 +59,13 @@ fn fail(why: String) -> i32 {
 
 // ---- Settings -----------------------------------------------------------------
 
-/// The settings the engine mounted ("settings", a flat JSON object), as
-/// touchHLE options and machine parameters.
+/// The settings the engine mounts ("settings", a JSON object, every declared
+/// setting present), as touchHLE options and machine parameters.
 pub struct Settings {
     /// touchHLE command-line options.
     pub options: Vec<String>,
     /// Seconds since the Unix epoch when the machine starts.
-    pub start_date: u64,
+    pub rtc_start: u64,
     /// The CPU clock, Hz.
     pub cpu_hz: u64,
     /// Arguments for the app itself (what follows touchHLE's --args). Not a
@@ -67,137 +73,104 @@ pub struct Settings {
     pub app_args: Vec<String>,
 }
 
+fn as_text(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
 impl Settings {
     pub fn parse(json: &str) -> Result<Settings, String> {
         let mut s = Settings {
             options: Vec::new(),
-            start_date: 946_684_800, // 2000-01-01
+            rtc_start: 946_684_800, // 2000-01-01
             cpu_hz: 412_000_000,
             app_args: Vec::new(),
         };
-        for (key, value) in flat_json(json)? {
+        let root: Value = if json.trim().is_empty() {
+            Value::Object(Default::default())
+        } else {
+            serde_json::from_str(json).map_err(|e| format!("the settings are not JSON: {e}"))?
+        };
+        let Value::Object(map) = root else {
+            return Err("the settings are not a JSON object".to_string());
+        };
+        for (key, value) in &map {
+            let text = as_text(value);
             match key.as_str() {
-                "deviceFamily" => match value.as_str() {
+                "device_family" => match text.as_str() {
                     "auto" => {}
-                    "iphone" | "ipad" => s.options.push(format!("--device-family={value}")),
-                    _ => return Err(format!("deviceFamily: unknown value {value:?}")),
+                    "iphone" | "ipad" => s.options.push(format!("--device-family={text}")),
+                    _ => return Err(format!("device_family: unknown value {text:?}")),
                 },
-                "orientation" => match value.as_str() {
-                    "portrait" => {}
+                "orientation" => match text.as_str() {
+                    "app" | "portrait" => {}
                     "upside-down" | "landscape-left" | "landscape-right" => {
-                        s.options.push(format!("--{value}"))
+                        s.options.push(format!("--{text}"))
                     }
-                    _ => return Err(format!("orientation: unknown value {value:?}")),
+                    _ => return Err(format!("orientation: unknown value {text:?}")),
                 },
-                "startDate" => {
-                    s.start_date = parse_date(&value).ok_or_else(|| {
-                        format!("startDate: {value:?} is not a date (YYYY-MM-DD, 1970 or later)")
-                    })?
+                "rtc_start" => {
+                    s.rtc_start = text
+                        .parse::<u64>()
+                        .map_err(|_| format!("rtc_start: {text:?} is not a time"))?
                 }
-                "cpuMHz" => {
-                    let mhz: u64 = value
+                "cpu_mhz" => {
+                    let mhz: u64 = text
                         .parse()
                         .ok()
                         .filter(|&m| (1..=10_000).contains(&m))
-                        .ok_or_else(|| format!("cpuMHz: {value:?} is not a clock"))?;
+                        .ok_or_else(|| format!("cpu_mhz: {text:?} is not a clock"))?;
                     s.cpu_hz = mhz * 1_000_000;
                 }
-                "appArgs" => s.app_args = value.split_whitespace().map(String::from).collect(),
-                "languages" => {
-                    if !value.is_empty() {
-                        s.options.push(format!("--preferred-languages={value}"))
-                    }
-                }
+                "appArgs" => s.app_args = text.split_whitespace().map(String::from).collect(),
                 _ => {} // a setting this build does not know is not an error
             }
         }
+        // touchHLE's "app" orientation lets its per-app defaults decide;
+        // landscape apps it knows open landscape.
         Ok(s)
     }
 }
 
-/// A flat JSON object's members, values as text (strings unquoted). The
-/// settings channel is never nested.
-fn flat_json(json: &str) -> Result<Vec<(String, String)>, String> {
-    let bad = || format!("settings are not a flat JSON object: {json:?}");
-    let s = json.trim();
-    let inner = s.strip_prefix('{').and_then(|s| s.strip_suffix('}')).ok_or_else(bad)?;
-    let mut out = Vec::new();
-    let mut chars = inner.chars().peekable();
-    let string = |chars: &mut std::iter::Peekable<std::str::Chars>| -> Option<String> {
-        let mut v = String::new();
-        while let Some(c) = chars.next() {
-            match c {
-                '"' => return Some(v),
-                '\\' => match chars.next()? {
-                    'n' => v.push('\n'),
-                    't' => v.push('\t'),
-                    'u' => {
-                        let hex: String = (0..4).filter_map(|_| chars.next()).collect();
-                        v.push(char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?);
-                    }
-                    c => v.push(c),
-                },
-                c => v.push(c),
-            }
-        }
-        None
-    };
-    loop {
-        while chars.peek().is_some_and(|c| c.is_whitespace() || *c == ',') {
-            chars.next();
-        }
-        match chars.next() {
-            None => break,
-            Some('"') => {}
-            Some(_) => return Err(bad()),
-        }
-        let key = string(&mut chars).ok_or_else(bad)?;
-        while chars.peek().is_some_and(|c| c.is_whitespace() || *c == ':') {
-            chars.next();
-        }
-        let value = if chars.peek() == Some(&'"') {
-            chars.next();
-            string(&mut chars).ok_or_else(bad)?
-        } else {
-            let mut v = String::new();
-            while chars.peek().is_some_and(|c| *c != ',' && *c != '}') {
-                v.push(chars.next().unwrap());
-            }
-            v.trim().to_string()
-        };
-        out.push((key, value));
-    }
-    Ok(out)
-}
+// ---- Save data ---------------------------------------------------------------
 
-/// "YYYY-MM-DD" to seconds since the Unix epoch (midnight UTC).
-fn parse_date(text: &str) -> Option<u64> {
-    let mut parts = text.trim().splitn(3, '-');
-    let y: i64 = parts.next()?.parse().ok()?;
-    let m: i64 = parts.next()?.parse().ok()?;
-    let d: i64 = parts.next()?.parse().ok()?;
-    if !(1970..=9999).contains(&y) || !(1..=12).contains(&m) || !(1..=31).contains(&d) {
-        return None;
+/// The files of a save-data zip (what Export Save Data writes): paths under
+/// the app's home, Documents/... and Library/....
+pub fn read_save_zip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| format!("not a zip: {e}"))?;
+    let mut out = Vec::new();
+    for i in 0..zip.len() {
+        let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
+        if f.is_dir() {
+            continue;
+        }
+        let name = f.name().to_string();
+        let mut data = Vec::new();
+        f.read_to_end(&mut data).map_err(|e| format!("{name}: {e}"))?;
+        out.push((name, data));
     }
-    // days from civil (Howard Hinnant)
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let mp = (m + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    let days = era * 146097 + doe - 719468;
-    u64::try_from(days * 86400).ok()
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
 }
 
 // ---- Starting ------------------------------------------------------------------
 
-/// Make the machine for the app at `bundle_path` (an .ipa), with `settings`.
-/// Nothing runs until the first frame.
-pub fn start(bundle_path: &str, settings: &Settings) -> Result<(), String> {
-    touchHLE::time::set_epoch(std::time::Duration::from_secs(settings.start_date));
+/// Make the machine for the app at `bundle_path` (an .ipa), with `settings`
+/// and the app's earlier save data. Nothing runs until the first frame.
+pub fn start(
+    bundle_path: &str,
+    settings: &Settings,
+    save_data: Vec<(String, Vec<u8>)>,
+) -> Result<(), String> {
+    touchHLE::time::set_epoch(std::time::Duration::from_secs(settings.rtc_start));
     touchHLE::time::set_cpu_hz(settings.cpu_hz);
     chimera::check_bundle(bundle_path)?;
+    chimera::set_save_data(save_data).map_err(|e| format!("the save data: {e}"))?;
+    // the app's memory exists from here on, at an address that never moves
+    chimera::app_memory();
     let mut args = vec!["touchHLE".to_string(), bundle_path.to_string()];
     args.extend(settings.options.iter().cloned());
     if !settings.app_args.is_empty() {
@@ -213,6 +186,15 @@ fn read_mount(name: &str) -> Result<Vec<u8>, String> {
     std::fs::read(name).map_err(|e| format!("{name}: {e}"))
 }
 
+/// The first file of slot `id` in the project's slot map ("slots": a JSON
+/// object of slot id to file names, each file mounted under its own name).
+/// None without a project or without that slot.
+fn slot_first(id: &str) -> Option<String> {
+    let text = std::fs::read("slots").ok()?;
+    let map: Value = serde_json::from_slice(&text).ok()?;
+    map.get(id)?.get(0)?.as_str().map(String::from)
+}
+
 #[no_mangle]
 pub extern "C" fn Init() -> i32 {
     let settings = match read_mount("settings")
@@ -222,15 +204,38 @@ pub extern "C" fn Init() -> i32 {
         Ok(s) => s,
         Err(e) => return fail(e),
     };
-    // The engine mounts the game under its own name too, and says which.
-    let name = match read_mount("rom.name") {
-        Ok(n) => String::from_utf8_lossy(&n).trim().to_string(),
-        Err(e) => return fail(e),
+    // The app: a project names it in its "game" slot; a file opened on its
+    // own arrives with its name in rom.name (and mounted under it too).
+    let name = match slot_first("game") {
+        Some(n) => n,
+        None => match read_mount("rom.name") {
+            Ok(n) => String::from_utf8_lossy(&n).trim().to_string(),
+            Err(e) => return fail(format!("no app: {e}")),
+        },
     };
-    if !name.to_ascii_lowercase().ends_with(".ipa") {
-        return fail(format!("{name} is not an .ipa file: this core runs iPhone OS apps packaged as .ipa"));
+    let base = name.rsplit('/').next().unwrap_or(&name).to_string();
+    let path = if std::path::Path::new(&base).is_file() {
+        base
+    } else {
+        name
+    };
+    if !path.to_ascii_lowercase().ends_with(".ipa") {
+        return fail(format!(
+            "{path} is not an .ipa file: this core runs iPhone OS apps packaged as .ipa"
+        ));
     }
-    match start(&name, &settings) {
+    // What the app saved before: the .zip Export Save Data writes.
+    let save_data = match slot_first("savedata") {
+        None => Vec::new(),
+        Some(zip_name) => {
+            let zip_base = zip_name.rsplit('/').next().unwrap_or(&zip_name).to_string();
+            match read_mount(&zip_base).and_then(|b| read_save_zip(&b)) {
+                Ok(files) => files,
+                Err(e) => return fail(format!("the save data {zip_base}: {e}")),
+            }
+        }
+    };
+    match start(&path, &settings, save_data) {
         Ok(()) => 1,
         Err(e) => fail(e),
     }
@@ -377,4 +382,80 @@ static SILENCE: [i16; AUDIO_PAIRS_PER_FRAME * 2] = [0; AUDIO_PAIRS_PER_FRAME * 2
 #[no_mangle]
 pub extern "C" fn GetAudioSampleCount() -> i32 {
     AUDIO_PAIRS_PER_FRAME as i32
+}
+
+// ---- Save data export (Emulator > Export Save Data...) -------------------------
+
+/// Lists what the app has saved, now: every file under its Documents and
+/// Library folders. The frontend writes them as a zip, which the savedata
+/// slot takes back.
+#[no_mangle]
+pub extern "C" fn GetSaveDataFileCount() -> i32 {
+    let c = core();
+    c.saves = chimera::save_data()
+        .into_iter()
+        .map(|(name, bytes)| (CString::new(name).unwrap_or_default().into_bytes_with_nul(), bytes))
+        .collect();
+    c.saves.len() as i32
+}
+
+#[no_mangle]
+pub extern "C" fn GetSaveDataFileName(i: i32) -> *const u8 {
+    match core().saves.get(i as usize) {
+        Some((name, _)) => name.as_ptr(),
+        None => b"\0".as_ptr(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn GetSaveDataFileSize(i: i32) -> i64 {
+    core().saves.get(i as usize).map_or(0, |(_, b)| b.len() as i64)
+}
+
+#[no_mangle]
+pub extern "C" fn GetSaveDataFileBuffer(i: i32) -> *const u8 {
+    match core().saves.get(i as usize) {
+        Some((_, b)) => b.as_ptr(),
+        None => std::ptr::null(),
+    }
+}
+
+// ---- Memory (RAM Watch, RAM Search, Hex Editor) -------------------------------
+
+/// One domain: the app's whole 32-bit address space as it sees it - its
+/// code, its heap and its threads' stacks at their real addresses, so an
+/// address an app disassembly names is the address here. Made in Init,
+/// before the machine starts, and never moved.
+#[no_mangle]
+pub extern "C" fn GetMemoryDomainCount() -> i32 {
+    1
+}
+
+#[no_mangle]
+pub extern "C" fn GetMemoryDomainName(i: i32) -> *const u8 {
+    match i {
+        0 => b"App Memory\0".as_ptr(),
+        _ => b"\0".as_ptr(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn GetMemoryDomainPtr(i: i32) -> *const u8 {
+    match i {
+        0 => chimera::app_memory().0,
+        _ => std::ptr::null(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn GetMemoryDomainSize(i: i32) -> i64 {
+    match i {
+        0 => chimera::app_memory().1 as i64,
+        _ => 0,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn GetMemoryDomainWritable(i: i32) -> i32 {
+    (i == 0) as i32
 }

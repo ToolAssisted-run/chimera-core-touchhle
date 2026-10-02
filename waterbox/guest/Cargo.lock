@@ -1175,7 +1175,9 @@ version = "0.3.0"
 name = "touchhle_guest"
 version = "0.0.0"
 dependencies = [
+ "serde_json",
  "touchHLE",
+ "zip",
 ]
 
 [[package]]

@@ -123,9 +123,32 @@ ends depends only on the machine, never on the host.
   own app: silence for 1 s, one OpenAL tone, then two) sounds the same in
   both flavors, through a savestate before every frame and a state moved to
   a fresh host (hash of every frame's sound identical).
-- [ ] M5 savestates: the rerecord and session runs work (above); make them
-  gate legs on real games.
-- [ ] M6 package, gate, settings; games from the user.
+- [x] M5 savestates: rerecord and session legs in the gate (TestApp tap,
+  SoundTest, SaveTest); a game leg runs session on every .ipa in
+  tests/roms-local.
+- [x] M6 package and gate (2026-10-02):
+  - `waterbox.config` (system id `iOS`, controller "iPhone": Touch 1/2 +
+    X/Y, Tilt X/Y; settings device_family, orientation, rtc_start, cpu_mhz),
+    `file_slots.json` (game .ipa, savedata .zip), keybinds, licences;
+    `build-package.sh` builds Mesa and the core itself, strips the packaged
+    core's debug sections (248 MB -> 23 MB package; symbols kept).
+  - Save data (patch 0006): the savedata slot's zip seeds Documents/Library
+    in memory before the app starts; Export Save Data lists every file under
+    Documents and Library (not Library/Caches), read between frames.
+  - Memory domain "App Memory" (patch 0007): the app's whole 4 GiB address
+    space, made in Init so it can be published before the machine starts.
+  - Chimera's contract tests (InstalledCorePackagesTests,
+    MnemonicUniquenessTests) pass 8/8 against the package; they caught an
+    rtc_start maximum that overflowed Int32.
+  - `run-gate.sh`: 19 legs on TestApp, SoundTest, SaveTest and ClockTest
+    (our own apps), plus the engine (chimera-run plays a tap movie on the
+    package and lands on run-wbx's picture byte for byte). ~4 minutes.
+    Negative controls seen red: a tap that is not seen (wrong field caught
+    in the leg itself), cpu_mhz 600 vs 412 against the stall leg, and a
+    sandbox core built at 413 MHz turned the clock and CLI legs red while
+    the idle-bound legs stayed green - which is why ClockTest exists.
+- [ ] M7 games from the user: compatibility, speed (softpipe), and whatever
+  they find.
 
 ### An app that exits (2026-10-02)
 

@@ -1,0 +1,141 @@
+diff --git a/src/chimera/mod.rs b/src/chimera/mod.rs
+--- a/src/chimera/mod.rs
++++ b/src/chimera/mod.rs
+@@ -46,6 +46,12 @@
+     exited: Option<Result<(), String>>,
+     /// The last frame's sound.
+     audio: Vec<i16>,
++    /// Save data to put in the app's home before it starts.
++    save_data: Vec<(String, Vec<u8>)>,
++    /// The machine, while it is stopped between frames (the frame ends with
++    /// it borrowed on the machine's own stack, which does not move while
++    /// suspended); null while it runs.
++    stopped: *mut Environment,
+ }
+ static mut STATE: State = State {
+     machine: None,
+@@ -53,6 +59,8 @@
+     frame: 0,
+     exited: None,
+     audio: Vec::new(),
++    save_data: Vec::new(),
++    stopped: std::ptr::null_mut(),
+ };
+ // The machine is one thread.
+ #[allow(static_mut_refs)]
+@@ -112,6 +120,63 @@
+     }
+ }
+ 
++/// Save data for the app, before the machine starts: (path under the app's
++/// home directory, bytes), e.g. ("Documents/save.dat", ...). Only paths under
++/// Documents/ and Library/ are taken.
++pub fn set_save_data(files: Vec<(String, Vec<u8>)>) -> Result<(), String> {
++    for (path, _) in &files {
++        let ok = (path.starts_with("Documents/") || path.starts_with("Library/"))
++            && !path
++                .split('/')
++                .any(|c| c.is_empty() || c == "." || c == "..");
++        if !ok {
++            return Err(format!(
++                "{path:?} is not a file under the app's Documents or Library folder"
++            ));
++        }
++    }
++    state().save_data = files;
++    Ok(())
++}
++
++pub(crate) fn take_save_data() -> Vec<(String, Vec<u8>)> {
++    std::mem::take(&mut state().save_data)
++}
++
++/// What the app has saved, between frames: every file under its Documents
++/// and Library folders (Library/Caches left out: a cache is not a save), as
++/// (path under the home directory, bytes), in name order. Empty before the
++/// first frame.
++pub fn save_data() -> Vec<(String, Vec<u8>)> {
++    let env = state().stopped;
++    if env.is_null() {
++        return Vec::new();
++    }
++    let env = unsafe { &mut *env };
++    let home = env.fs.home_directory().to_owned();
++    let mut out = Vec::new();
++    for top in ["Documents", "Library"] {
++        let base = home.join(top);
++        let Ok(paths) = env.fs.enumerate_recursive(&base) else {
++            continue;
++        };
++        for path in paths {
++            let rel = format!("{top}/{}", path.as_str());
++            if rel == "Library/Caches" || rel.starts_with("Library/Caches/") {
++                continue;
++            }
++            let full = base.join(path.as_str());
++            if env.fs.is_file(&full) {
++                if let Ok(bytes) = env.fs.read(&full) {
++                    out.push((rel, bytes));
++                }
++            }
++        }
++    }
++    out.sort_by(|a, b| a.0.cmp(&b.0));
++    out
++}
++
+ /// Frames completed.
+ pub fn frame_count() -> u64 {
+     state().frame
+@@ -150,6 +215,7 @@
+         _ => Err(format!("the app exited with status {code}")),
+     });
+     s.frame += 1;
++    s.stopped = env;
+     if env.window.is_none() {
+         // headless (no frames to stop at): as upstream
+         std::process::exit(code);
+@@ -177,7 +243,9 @@
+     assert!(!yielder.is_null());
+     // Back to the core until the next frame; this frame's picture is already
+     // in the window's buffer.
++    s.stopped = env;
+     unsafe { (*yielder).suspend(()) };
++    state().stopped = std::ptr::null_mut();
+     // The next frame's input, before anything else runs.
+     if let Some(window) = env.window.as_mut() {
+         window.poll_for_events(&env.options);
+diff --git a/src/fs.rs b/src/fs.rs
+--- a/src/fs.rs
++++ b/src/fs.rs
+@@ -832,12 +832,29 @@
+ 
+         log_dbg!("Initial filesystem layout: {:#?}", root);
+ 
+-        let fs = Fs {
++        #[allow(unused_mut)]
++        let mut fs = Fs {
+             root,
+             working_directory,
+             home_directory,
+         };
+         assert!(fs.lookup_node(&bundle_guest_path).is_some());
++
++        // What the app saved before, as the project brought it (Chimera's
++        // save-data slot): written into the home directory in memory, as if
++        // the app had left it there.
++        #[cfg(feature = "chimera")]
++        if !read_only_mode {
++            for (path, data) in crate::chimera::take_save_data() {
++                let full = fs.home_directory.join(&path);
++                if let Some((parent, _)) = full.as_str().rsplit_once('/') {
++                    fs.create_dir_all(GuestPathBuf::from(parent.to_string()))
++                        .unwrap_or_else(|e| panic!("save data {path}: {e:?}"));
++                }
++                fs.write(&full, &data)
++                    .unwrap_or_else(|e| panic!("save data {path}: {e:?}"));
++            }
++        }
+         (fs, bundle_guest_path)
+     }
+ 

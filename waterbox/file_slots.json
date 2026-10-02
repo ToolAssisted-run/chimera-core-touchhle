@@ -1,0 +1,21 @@
+{
+  "_comment": "An iPhone OS project is one app, and whatever it already saved. touchHLE needs nothing else: it carries its own system libraries and fonts.",
+  "slots": [
+    {
+      "id": "game",
+      "title": "App",
+      "min": 1,
+      "max": 1,
+      "formats": ["ipa"],
+      "help": "A DECRYPTED .ipa for iPhone OS 2.x to iOS 4.0. An App Store download is encrypted and will not run; touchHLE's compatibility database (appdb.touchhle.org) says which apps and versions work."
+    },
+    {
+      "id": "savedata",
+      "title": "Save data",
+      "min": 0,
+      "max": 1,
+      "formats": ["zip"],
+      "help": "What the app already saved, as Emulator > Export Save Data... wrote it: a .zip of the app's Documents and Library folders. It goes back into the app's home before the app starts."
+    }
+  ]
+}

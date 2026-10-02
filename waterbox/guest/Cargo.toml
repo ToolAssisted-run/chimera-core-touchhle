@@ -18,6 +18,10 @@ crate-type = ["staticlib", "rlib"]
 # The pinned touchHLE checkout with this repository's patches applied; its
 # "chimera" feature is the frame-at-a-time machine without SDL.
 touchHLE = { path = "../../extern/touchHLE", default-features = false, features = ["chimera", "static"] }
+# the settings and slot map are JSON
+serde_json = "1"
+# save data comes in as the .zip Export Save Data writes (touchHLE's own zip)
+zip = { version = "0.6.4", default-features = false, features = ["deflate"] }
 
 [profile.release]
 opt-level = 2

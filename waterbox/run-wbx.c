@@ -15,6 +15,10 @@
  *             one from the same core and files, loads the state into it and
  *             finishes there: the reopened-project case, where anything of
  *             the machine kept outside the sandbox shows.
+ * --savedata ZIP     start from this save data: mounted as a project mounts
+ *                    it, named in the "savedata" slot of a "slots" map
+ * --export-save ZIP  at the end, write what the app saved (stored, not
+ *                    deflated), and print run-native's "save" lines
  */
 #include "minibox.h"
 
@@ -67,6 +71,8 @@ static uint8_t *slurp(const char *path, size_t *len)
 }
 
 typedef int32_t (MB_GUEST_ABI *i32fn)(void);
+typedef uintptr_t (MB_GUEST_ABI *ptrfn_i32)(int32_t);
+typedef int64_t (MB_GUEST_ABI *i64fn_i32)(int32_t);
 typedef uint64_t (MB_GUEST_ABI *u64fn)(void);
 typedef uintptr_t (MB_GUEST_ABI *ptrfn)(void);
 typedef void (MB_GUEST_ABI *framefn)(uint64_t);
@@ -78,12 +84,19 @@ static uint8_t *g_ipa;
 static size_t g_ipaLen;
 static char g_alias[1024];
 static char g_settings[8192];
+static uint8_t *g_save;
+static size_t g_saveLen;
+static char g_saveName[1024];
+static char g_slots[4096];
 
 static i32fn g_Init, g_IsRunning, g_GetVideoWidth, g_GetVideoHeight;
 static u64fn g_GetFrameCount, g_GetMachineTimeNs, g_GetExecutedTicks;
 static ptrfn g_GetLoadError, g_GetVideoBgra, g_GetAudio;
 static i32fn g_GetAudioSampleCount;
 static framefn g_FrameAdvance;
+static i32fn g_SaveCount;
+static ptrfn_i32 g_SaveName, g_SaveBuffer;
+static i64fn_i32 g_SaveSize;
 static setfn g_SetAxis;
 
 static void fail(const char *what, mb_return *r)
@@ -125,6 +138,13 @@ static void build_host(void)
 	mount("rom", g_ipa, g_ipaLen);
 	mount(g_alias, g_ipa, g_ipaLen);
 	mount("rom.name", (const uint8_t *)g_alias, strlen(g_alias));
+	if (g_save)
+	{
+		/* a project: each file under its own name, the slot map saying which */
+		mount(g_alias + 1, g_ipa, g_ipaLen);
+		mount(g_saveName, g_save, g_saveLen);
+		mount("slots", (const uint8_t *)g_slots, strlen(g_slots));
+	}
 	mount("settings", (const uint8_t *)g_settings, strlen(g_settings));
 	wbx_activate_host(g_host, &r);
 	fail("activate", &r);
@@ -141,6 +161,10 @@ static void build_host(void)
 	g_GetVideoWidth = (i32fn)proc("GetVideoWidth");
 	g_GetVideoHeight = (i32fn)proc("GetVideoHeight");
 	g_GetAudio = (ptrfn)proc("GetAudio");
+	g_SaveCount = (i32fn)proc("GetSaveDataFileCount");
+	g_SaveName = (ptrfn_i32)proc("GetSaveDataFileName");
+	g_SaveSize = (i64fn_i32)proc("GetSaveDataFileSize");
+	g_SaveBuffer = (ptrfn_i32)proc("GetSaveDataFileBuffer");
 	g_GetAudioSampleCount = (i32fn)proc("GetAudioSampleCount");
 
 	if (g_Init() != 1)
@@ -177,6 +201,59 @@ static void write_tga(const char *path, const uint8_t *bgra, int w, int h)
 	fclose(f);
 }
 
+/* A zip of what the core lists, entries STORED (no compression): enough for
+ * the core to read back, and nothing to get wrong. */
+static uint32_t crc32(const uint8_t *p, size_t n)
+{
+	uint32_t c = 0xffffffffu;
+	for (size_t i = 0; i < n; i++)
+	{
+		c ^= p[i];
+		for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xedb88320u & (0u - (c & 1)));
+	}
+	return ~c;
+}
+static void put16(FILE *f, unsigned v) { fputc(v & 0xff, f); fputc((v >> 8) & 0xff, f); }
+static void put32(FILE *f, uint32_t v) { put16(f, v & 0xffff); put16(f, v >> 16); }
+static void export_save(const char *path)
+{
+	const int n = g_SaveCount();
+	FILE *f = fopen(path, "wb");
+	if (!f) { perror(path); exit(1); }
+	uint32_t *offsets = calloc((size_t)n + 1, sizeof *offsets), *crcs = calloc((size_t)n + 1, sizeof *crcs);
+	const unsigned date = ((2026 - 1980) << 9) | (10 << 5) | 2;
+	for (int i = 0; i < n; i++)
+	{
+		const char *name = (const char *)g_SaveName(i);
+		const uint32_t size = (uint32_t)g_SaveSize(i);
+		const uint8_t *data = (const uint8_t *)g_SaveBuffer(i);
+		printf("save %s %u %016llx\n", name, size, (unsigned long long)fnv64(data, size));
+		offsets[i] = (uint32_t)ftell(f);
+		crcs[i] = crc32(data, size);
+		put32(f, 0x04034b50); put16(f, 20); put16(f, 0); put16(f, 0); put16(f, 0); put16(f, date);
+		put32(f, crcs[i]); put32(f, size); put32(f, size); put16(f, (unsigned)strlen(name)); put16(f, 0);
+		fwrite(name, 1, strlen(name), f);
+		fwrite(data, 1, size, f);
+	}
+	const uint32_t cd = (uint32_t)ftell(f);
+	for (int i = 0; i < n; i++)
+	{
+		const char *name = (const char *)g_SaveName(i);
+		const uint32_t size = (uint32_t)g_SaveSize(i);
+		put32(f, 0x02014b50); put16(f, 20); put16(f, 20); put16(f, 0); put16(f, 0); put16(f, 0); put16(f, date);
+		put32(f, crcs[i]); put32(f, size); put32(f, size); put16(f, (unsigned)strlen(name));
+		put16(f, 0); put16(f, 0); put16(f, 0); put16(f, 0); put32(f, 0); put32(f, offsets[i]);
+		fwrite(name, 1, strlen(name), f);
+	}
+	const uint32_t cdLen = (uint32_t)ftell(f) - cd;
+	put32(f, 0x06054b50); put16(f, 0); put16(f, 0); put16(f, (unsigned)n); put16(f, (unsigned)n);
+	put32(f, cdLen); put32(f, cd); put16(f, 0);
+	fclose(f);
+	free(offsets);
+	free(crcs);
+	fprintf(stderr, "run-wbx: exported %d save files to %s\n", n, path);
+}
+
 /* the input schedule, as run-native takes it */
 enum { TOUCH, RELEASE, TILT };
 typedef struct { long frame; int kind, finger, x, y; } change;
@@ -198,6 +275,7 @@ int main(int argc, char **argv)
 	long frames = 600, digestEvery = 0;
 	int rerecord = 0, session = 0;
 	const char *stateOut = NULL;
+	const char *exportSave = NULL;
 	change changes[1024];
 	int nchanges = 0;
 	shot shots[256];
@@ -215,6 +293,13 @@ int main(int argc, char **argv)
 		if (!strcmp(a, "--frames")) frames = atol(v);
 		else if (!strcmp(a, "--digest-every")) digestEvery = atol(v);
 		else if (!strcmp(a, "--state-out")) stateOut = v;
+		else if (!strcmp(a, "--export-save")) exportSave = v;
+		else if (!strcmp(a, "--savedata"))
+		{
+			g_save = slurp(v, &g_saveLen);
+			const char *sb = strrchr(v, '/');
+			snprintf(g_saveName, sizeof g_saveName, "%s", sb ? sb + 1 : v);
+		}
 		else if (!strcmp(a, "--setting"))
 		{
 			const char *eq = strchr(v, '=');
@@ -253,6 +338,7 @@ int main(int argc, char **argv)
 	}
 	g_settings[sl++] = '}';
 	g_settings[sl] = 0;
+	snprintf(g_slots, sizeof g_slots, "{\"game\":[\"%s\"],\"savedata\":[\"%s\"]}", g_alias + 1, g_saveName);
 
 	build_host();
 
@@ -328,6 +414,7 @@ int main(int argc, char **argv)
 		}
 		if (!g_IsRunning()) break;
 	}
+	if (exportSave) export_save(exportSave);
 	const int w = g_GetVideoWidth(), h = g_GetVideoHeight();
 	const uint8_t *px = (const uint8_t *)g_GetVideoBgra();
 	printf("frames=%llu ticks=%llu time_ns=%llu video=%016llx %dx%d audio=%016llx running=%d\n",

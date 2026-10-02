@@ -76,7 +76,9 @@ mesa_archives="$(find "$mesa" -name '*.a' | sort | tr '\n' ' ')"
 exports=""
 for e in Init GetLoadError SetButton SetAxis FrameAdvance IsRunning GetFrameCount \
 	GetMachineTimeNs GetExecutedTicks GetVideoBgra GetVideoWidth GetVideoHeight GetVsyncNumerator \
-	GetVsyncDenominator GetAudio GetAudioSampleCount; do
+	GetVsyncDenominator GetAudio GetAudioSampleCount GetSaveDataFileCount \
+	GetSaveDataFileName GetSaveDataFileSize GetSaveDataFileBuffer GetMemoryDomainCount \
+	GetMemoryDomainName GetMemoryDomainPtr GetMemoryDomainSize GetMemoryDomainWritable; do
 	exports="$exports -Wl,-u,$e"
 done
 
