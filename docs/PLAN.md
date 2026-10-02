@@ -184,6 +184,32 @@ ends depends only on the machine, never on the host.
   unit test against the old walk). Now: THPS2 first frame 0.87 s, games
   34-37 fps in the sandbox. The touchHLE core needs a Chimera built with it.
 
+### Windows: every coroutine on a declared stack (2026-10-02)
+
+The package passed every Linux leg and died on Windows in its first frame,
+0xC0000005 in the guest's malloc, with nothing in minibox-diag.log. A ring of
+every exception the handler saw (a file-backed view, so it outlives the
+process) showed 215 faults all served, and the fatal one never reaching it:
+Windows could not deliver it at all.
+
+The stack pointer was on one of corosensei's stacks. corosensei reserves a
+stack PROT_NONE and then makes it writable, so to miniBox it is ordinary
+memory, and a clean page of that is write-protected until its first write
+(dirty tracking). Windows pushes an exception onto the faulting thread's own
+stack; with the stack pointer on such a page the push fails too, and the
+process dies before any handler runs. Linux runs its handler on a
+sigaltstack, so it never shows. miniBox says it in mb_page_native_prot: a
+guest must say where its stacks are, with MAP_STACK (ares met the same).
+
+Patch 0009: `chimera::GuestStack` maps writable with MAP_STACK and makes its
+guard page after, and every coroutine runs on one - the machine's and
+touchHLE's own threads (`environment::CoroutineStack`, part of the
+`HostContext` type, so a thread made another way does not compile). Proven
+on the 1060: same miniBox DLL, the package before dies at boot, after it the
+tap movie and Terminator's 2700 frames give Linux's pictures byte for byte,
+and a savestate every frame changes nothing. 2700 frames: 89 s on Windows,
+81 s on Linux (Windows reads stack pages instead of watching them).
+
 ### An app that exits (2026-10-02)
 
 Upstream ends the process when an app calls `exit()` or UIKit terminates it;

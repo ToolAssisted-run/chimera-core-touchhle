@@ -1,0 +1,147 @@
+diff --git a/src/chimera/mod.rs b/src/chimera/mod.rs
+--- a/src/chimera/mod.rs
++++ b/src/chimera/mod.rs
+@@ -20,7 +20,7 @@
+ 
+ use crate::environment::Environment;
+ use crate::time::Instant;
+-use corosensei::stack::DefaultStack;
++use corosensei::stack::{Stack, StackPointer, MIN_STACK_SIZE};
+ use corosensei::{Coroutine, CoroutineResult, Yielder};
+ 
+ pub mod resources;
+@@ -34,7 +34,78 @@
+ /// main thread).
+ const MACHINE_STACK_SIZE: usize = 16 << 20;
+ 
+-type Machine = Coroutine<(), (), Result<(), String>, DefaultStack>;
++type Machine = Coroutine<(), (), Result<(), String>, GuestStack>;
++
++/// A coroutine stack that the sandbox knows is a stack.
++///
++/// corosensei's own stack is reserved PROT_NONE and then made writable, so to
++/// miniBox it is ordinary memory, and a clean page of ordinary memory is
++/// write-protected until its first write (that is how a savestate knows what
++/// changed). Windows delivers an exception by pushing it onto the faulting
++/// thread's own stack, so the first time anything faulted while the stack
++/// pointer was on such a page, the push failed too and the process died with
++/// no handler run. Memory mapped writable with MAP_STACK is a stack to
++/// miniBox and is never write-protected; the guard page is made after.
++pub struct GuestStack {
++    base: StackPointer,
++    len: usize,
++}
++
++const PAGE_SIZE: usize = 4096;
++
++impl GuestStack {
++    pub fn new(size: usize) -> std::io::Result<Self> {
++        // the guard page below the size asked for, rounded up to pages
++        let len = (size.max(MIN_STACK_SIZE) + 2 * PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
++        unsafe {
++            let p = libc::mmap(
++                std::ptr::null_mut(),
++                len,
++                libc::PROT_READ | libc::PROT_WRITE,
++                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS | libc::MAP_STACK,
++                -1,
++                0,
++            );
++            if p == libc::MAP_FAILED {
++                return Err(std::io::Error::last_os_error());
++            }
++            // made first, so a failure below unmaps it
++            let out = GuestStack {
++                base: StackPointer::new(p as usize + len).unwrap(),
++                len,
++            };
++            if libc::mprotect(p, PAGE_SIZE, libc::PROT_NONE) != 0 {
++                return Err(std::io::Error::last_os_error());
++            }
++            Ok(out)
++        }
++    }
++}
++
++/// The size corosensei's DefaultStack gives a coroutine.
++impl Default for GuestStack {
++    fn default() -> Self {
++        GuestStack::new(1 << 20).expect("no stack for a coroutine")
++    }
++}
++
++impl Drop for GuestStack {
++    fn drop(&mut self) {
++        unsafe {
++            libc::munmap((self.base.get() - self.len) as *mut libc::c_void, self.len);
++        }
++    }
++}
++
++unsafe impl Stack for GuestStack {
++    fn base(&self) -> StackPointer {
++        self.base
++    }
++
++    fn limit(&self) -> StackPointer {
++        StackPointer::new(self.base.get() - self.len).unwrap()
++    }
++}
+ 
+ struct State {
+     machine: Option<Machine>,
+@@ -112,7 +183,7 @@
+ pub fn boot(args: Vec<String>) {
+     let s = state();
+     assert!(s.machine.is_none(), "the machine is already made");
+-    let stack = DefaultStack::new(MACHINE_STACK_SIZE).expect("no stack for the machine");
++    let stack = GuestStack::new(MACHINE_STACK_SIZE).expect("no stack for the machine");
+     s.machine = Some(Coroutine::with_stack(
+         stack,
+         move |yielder: &Yielder<(), ()>, ()| {
+diff --git a/src/environment.rs b/src/environment.rs
+--- a/src/environment.rs
++++ b/src/environment.rs
+@@ -38,7 +38,14 @@
+ /// Index into the [Vec] of threads. Thread 0 is always the main thread.
+ pub type ThreadId = usize;
+ 
+-pub type HostContext = Coroutine<Environment, Environment, Environment>;
++/// What a host coroutine runs on. In the Chimera core it is a stack the
++/// sandbox knows is one (see [crate::chimera::GuestStack]).
++#[cfg(feature = "chimera")]
++pub type CoroutineStack = crate::chimera::GuestStack;
++#[cfg(not(feature = "chimera"))]
++pub type CoroutineStack = corosensei::stack::DefaultStack;
++
++pub type HostContext = Coroutine<Environment, Environment, Environment, CoroutineStack>;
+ 
+ /// Bookkeeping for a thread.
+ pub struct Thread {
+@@ -522,7 +529,7 @@
+             false => None,
+         });
+ 
+-        let main_thread_init_routine = Coroutine::new(move |yielder, mut env: Environment| {
++        let main_thread_init_routine = Coroutine::with_stack(CoroutineStack::default(), move |yielder, mut env: Environment| {
+             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                 env.with_yielder(yielder, move |env| {
+                     echo!("CPU emulation begins now.");
+@@ -1074,7 +1081,7 @@
+         let stack_high_addr = stack_alloc.to_bits() + stack_size;
+         assert!(stack_high_addr.is_multiple_of(4));
+ 
+-        let thread_routine = Coroutine::new(move |yielder, mut env: Environment| {
++        let thread_routine = Coroutine::with_stack(CoroutineStack::default(), move |yielder, mut env: Environment| {
+             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                 env.with_yielder(yielder, move |env| {
+                     let regs = env.cpu.regs_mut();
+@@ -1275,7 +1282,7 @@
+         R: 'static,
+     {
+         let panic_cell = Rc::new(Cell::new(None));
+-        let mut app_picker_coroutine = Coroutine::new(move |yielder, mut env: Environment| {
++        let mut app_picker_coroutine = Coroutine::with_stack(CoroutineStack::default(), move |yielder, mut env: Environment| {
+             env.panic_cell = panic_cell.clone();
+             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                 env.with_yielder(yielder, f)
