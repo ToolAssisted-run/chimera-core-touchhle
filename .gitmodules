@@ -1,0 +1,6 @@
+[submodule "extern/touchHLE"]
+	path = extern/touchHLE
+	url = https://github.com/touchHLE/touchHLE.git
+[submodule "extern/ext-boost"]
+	path = extern/ext-boost
+	url = https://github.com/azahar-emu/ext-boost.git

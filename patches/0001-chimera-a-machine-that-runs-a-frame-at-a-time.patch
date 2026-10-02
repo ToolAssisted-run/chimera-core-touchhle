@@ -1,0 +1,1621 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 7243a149..6a8c2725 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -27,8 +27,14 @@ name = "touchHLE"
+ path = "src/bin.rs"
+ 
+ [features]
+-default = ["static"]
+-static = ["sdl2/bundled", "sdl2/static-link", "touchHLE_openal_soft_wrapper/static"]
++default = ["static", "sdl"]
++static = ["sdl2?/bundled", "sdl2?/static-link", "touchHLE_openal_soft_wrapper/static"]
++# The window, OpenGL context and input come from SDL2. Chimera's build does
++# without it.
++sdl = ["dep:sdl2", "dep:sdl2-sys"]
++# Chimera's build: a machine driven a frame at a time, on a virtual clock, with
++# an OpenGL compiled into the core (src/chimera/). Build it without "sdl".
++chimera = []
+ 
+ # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+ 
+@@ -68,8 +74,8 @@ encoding_rs = "0.8.35"
+ # behind this, but the actual HIDAPI is not used by touchHLE (see window.rs).
+ # Note that the submodule in vendor/SDL2/ must use exactly the same revision of
+ # SDL2 that rust-sdl2 uses, so that the Android JNI interface matches.
+-sdl2 = { git = "https://github.com/touchHLE/rust-sdl2", tag = "touchHLE-3", features = ["hidapi"] }
+-sdl2-sys = { git = "https://github.com/touchHLE/rust-sdl2", tag = "touchHLE-3" }
++sdl2 = { git = "https://github.com/touchHLE/rust-sdl2", tag = "touchHLE-3", features = ["hidapi"], optional = true }
++sdl2-sys = { git = "https://github.com/touchHLE/rust-sdl2", tag = "touchHLE-3", optional = true }
+ touchHLE_dynarmic_wrapper = { path = "src/cpu/dynarmic_wrapper" }
+ touchHLE_gl_bindings = { path = "src/gles/gl_bindings" }
+ touchHLE_openal_soft_wrapper = { path = "src/audio/openal_soft_wrapper" }
+diff --git a/src/chimera/mod.rs b/src/chimera/mod.rs
+new file mode 100644
+index 00000000..bcdc8035
+--- /dev/null
++++ b/src/chimera/mod.rs
+@@ -0,0 +1,149 @@
++/*
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
++ */
++//! What the Chimera core drives: touchHLE as a machine that runs one frame at
++//! a time.
++//!
++//! touchHLE's own main loop ([crate::Environment::run]) never returns until
++//! the app exits. Here it runs inside a coroutine of its own, and yields back
++//! to the core at the end of every frame. A frame is 1/60 s of MACHINE time
++//! ([crate::time]): it ends between two threads' turns once the clock has
++//! passed its end ([frame_boundary]), or, when every thread is asleep, when
++//! the clock is moved there instead of past it ([idle_until]). Nothing about
++//! where a frame ends depends on the host, so a frame's input always reaches
++//! the app at the same point of its execution.
++//!
++//! Everything here lives in the machine's own memory, the coroutine's stack
++//! included, which is what makes a sandbox snapshot a savestate.
++
++use crate::environment::Environment;
++use crate::time::Instant;
++use corosensei::stack::DefaultStack;
++use corosensei::{Coroutine, CoroutineResult, Yielder};
++
++pub mod resources;
++
++pub use crate::window::{set_tilt, set_touch, video, MAX_FINGERS};
++
++/// Frames per second: the frame clock is 60/1.
++pub const FRAMES_PER_SECOND: u64 = 60;
++
++/// The stack touchHLE's main loop runs on (upstream runs it on the host's
++/// main thread).
++const MACHINE_STACK_SIZE: usize = 16 << 20;
++
++type Machine = Coroutine<(), (), Result<(), String>, DefaultStack>;
++
++struct State {
++    machine: Option<Machine>,
++    /// The machine coroutine's yielder, valid while it runs.
++    yielder: *const Yielder<(), ()>,
++    /// Frames completed.
++    frame: u64,
++    /// Set when touchHLE's main returned: the app exited, or failed to start.
++    exited: Option<Result<(), String>>,
++}
++static mut STATE: State = State {
++    machine: None,
++    yielder: std::ptr::null(),
++    frame: 0,
++    exited: None,
++};
++// The machine is one thread.
++#[allow(static_mut_refs)]
++fn state() -> &'static mut State {
++    unsafe { &mut STATE }
++}
++
++/// When frame `frame` ends, in nanoseconds of machine time: the exact
++/// rational 1/60 s boundary, rounded down.
++fn frame_end_ns(frame: u64) -> u64 {
++    ((frame as u128 + 1) * 1_000_000_000 / FRAMES_PER_SECOND as u128) as u64
++}
++
++/// Whether `path` is an app bundle touchHLE can open, and why not: the same
++/// two steps upstream's `main` begins with, done before anything runs so a
++/// bad file is refused when the core loads rather than on its first frame.
++pub fn check_bundle(path: &str) -> Result<(), String> {
++    let data = crate::fs::BundleData::open_any(std::path::Path::new(path))
++        .map_err(|e| format!("Could not open app bundle: {e}"))?;
++    crate::bundle::Bundle::new_bundle_and_fs_from_host_path(data, /* read_only_mode: */ true)
++        .map(|_| ())
++        .map_err(|e| format!("Application bundle error: {e}"))
++}
++
++/// Make the machine: touchHLE's command line, as upstream's `main` takes it
++/// (argv[0] first). Nothing runs until the first [run_frame].
++pub fn boot(args: Vec<String>) {
++    let s = state();
++    assert!(s.machine.is_none(), "the machine is already made");
++    let stack = DefaultStack::new(MACHINE_STACK_SIZE).expect("no stack for the machine");
++    s.machine = Some(Coroutine::with_stack(
++        stack,
++        move |yielder: &Yielder<(), ()>, ()| {
++            state().yielder = yielder;
++            crate::main(args.into_iter())
++        },
++    ));
++}
++
++/// Run one frame. Returns `None` while the app runs, and what touchHLE's main
++/// returned once it has exited (then and on every later call).
++pub fn run_frame() -> Option<Result<(), String>> {
++    let s = state();
++    if let Some(ref exited) = s.exited {
++        return Some(exited.clone());
++    }
++    let machine = s.machine.as_mut().expect("the machine is not made");
++    match machine.resume(()) {
++        CoroutineResult::Yield(()) => None,
++        CoroutineResult::Return(result) => {
++            // An app that exits mid-frame still ends that frame.
++            s.frame += 1;
++            s.exited = Some(result.clone());
++            Some(result)
++        }
++    }
++}
++
++/// Frames completed.
++pub fn frame_count() -> u64 {
++    state().frame
++}
++
++/// Called between threads' turns: end the frame if machine time has passed
++/// its end.
++pub(crate) fn frame_boundary(env: &mut Environment) {
++    if crate::time::now_ns() >= frame_end_ns(state().frame) {
++        end_frame(env);
++    }
++}
++
++/// Called when every thread is blocked and the earliest sleeper wakes at
++/// `until`: move machine time there, or to the end of the frame if that comes
++/// first, and end the frame.
++pub(crate) fn idle_until(env: &mut Environment, until: Instant) {
++    let end = frame_end_ns(state().frame);
++    if until.as_nanos() >= end {
++        crate::time::advance_to(end);
++        end_frame(env);
++    } else {
++        crate::time::advance_to(until.as_nanos());
++    }
++}
++
++fn end_frame(env: &mut Environment) {
++    let s = state();
++    s.frame += 1;
++    let yielder = s.yielder;
++    assert!(!yielder.is_null());
++    // Back to the core until the next frame; this frame's picture is already
++    // in the window's buffer.
++    unsafe { (*yielder).suspend(()) };
++    // The next frame's input, before anything else runs.
++    if let Some(window) = env.window.as_mut() {
++        window.poll_for_events(&env.options);
++    }
++}
+diff --git a/src/chimera/resources.rs b/src/chimera/resources.rs
+new file mode 100644
+index 00000000..5c2572b1
+--- /dev/null
++++ b/src/chimera/resources.rs
+@@ -0,0 +1,62 @@
++/*
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
++ */
++//! The files touchHLE ships beside itself, carried inside Chimera's build: a
++//! core has no directory of its own to keep them in. Looked up by the path
++//! upstream opens them by ([crate::paths::ResourceFile]).
++//!
++//! touchHLE_dylibs: Free Software iPhone OS libraries the apps link against
++//! (see their README.md and COPYING files); touchHLE_fonts: Liberation and
++//! Noto; touchHLE_default_options.txt: the per-app options touchHLE knows
++//! certain apps need.
++
++macro_rules! resources {
++    ($($path:literal),* $(,)?) => {
++        const RESOURCES: &[(&str, &[u8])] = &[
++            $(($path, include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path)))),*
++        ];
++    };
++}
++
++resources![
++    "touchHLE_default_options.txt",
++    "touchHLE_dylibs/COPYING.libgcc",
++    "touchHLE_dylibs/COPYING.libsqlite3",
++    "touchHLE_dylibs/COPYING.libstdcxx",
++    "touchHLE_dylibs/COPYING.libxml2",
++    "touchHLE_dylibs/COPYING.libz",
++    "touchHLE_dylibs/README.md",
++    "touchHLE_dylibs/libgcc_s.1.dylib",
++    "touchHLE_dylibs/libsqlite3.dylib",
++    "touchHLE_dylibs/libstdc++.6.0.9.dylib",
++    "touchHLE_dylibs/libxml2.2.dylib",
++    "touchHLE_dylibs/libz.1.2.3.dylib",
++    "touchHLE_fonts/LICENSE.liberation",
++    "touchHLE_fonts/LICENSE.noto",
++    "touchHLE_fonts/LiberationMono-Bold.ttf",
++    "touchHLE_fonts/LiberationMono-BoldItalic.ttf",
++    "touchHLE_fonts/LiberationMono-Italic.ttf",
++    "touchHLE_fonts/LiberationMono-Regular.ttf",
++    "touchHLE_fonts/LiberationSans-Bold.ttf",
++    "touchHLE_fonts/LiberationSans-BoldItalic.ttf",
++    "touchHLE_fonts/LiberationSans-Italic.ttf",
++    "touchHLE_fonts/LiberationSans-Regular.ttf",
++    "touchHLE_fonts/LiberationSerif-Bold.ttf",
++    "touchHLE_fonts/LiberationSerif-BoldItalic.ttf",
++    "touchHLE_fonts/LiberationSerif-Italic.ttf",
++    "touchHLE_fonts/LiberationSerif-Regular.ttf",
++    "touchHLE_fonts/NotoSansJP-Bold.otf",
++    "touchHLE_fonts/NotoSansJP-Regular.otf",
++    "touchHLE_fonts/README.md",
++];
++
++/// A resource's bytes, by the path upstream opens it by.
++pub fn get(path: &str) -> Option<&'static [u8]> {
++    let path = path.strip_prefix("./").unwrap_or(path);
++    RESOURCES
++        .iter()
++        .find(|(name, _)| *name == path)
++        .map(|(_, data)| *data)
++}
+diff --git a/src/chimera/time.rs b/src/chimera/time.rs
+new file mode 100644
+index 00000000..3f241441
+--- /dev/null
++++ b/src/chimera/time.rs
+@@ -0,0 +1,215 @@
++/*
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
++ */
++//! The clocks an app sees, in Chimera's build: virtual ones.
++//!
++//! Everything in touchHLE that asks what time it is - the scheduler's sleeps,
++//! NSTimer, the frame limiter, NSDate, `time()`, `mach_absolute_time()`, the
++//! audio callbacks - goes through this module's [Instant] and [SystemTime],
++//! which keep std's names and the methods touchHLE uses. In the upstream build
++//! `crate::time` is std's own.
++//!
++//! Time is bought with executed instructions ([advance_ticks], called after
++//! every stretch the CPU runs), and when every thread is asleep the scheduler
++//! jumps it to the next deadline ([advance_to]). Nothing here reads a host
++//! clock, so the same inputs give the same machine on any host at any speed.
++//! The wall-clock date the app sees starts at [set_epoch] and moves with the
++//! same clock.
++
++use std::time::Duration;
++
++/// The CPU clock that converts executed instructions into time. dynarmic
++/// counts one tick per instruction, and the first iPhone and the iPhone 3G
++/// both ran their ARM11 at 412 MHz.
++static mut CPU_HZ: u64 = 412_000_000;
++/// Instructions executed since the machine started.
++static mut TICKS: u64 = 0;
++/// Time spent with every thread asleep, in nanoseconds.
++static mut IDLE_NS: u64 = 0;
++/// The wall-clock date when the machine started, since the Unix epoch.
++static mut EPOCH: Duration = Duration::from_secs(946_684_800); // 2000-01-01T00:00:00Z
++
++// The machine is one thread, and these are only ever touched from it.
++
++/// Set the CPU clock (Hz). Only before the machine starts.
++pub fn set_cpu_hz(hz: u64) {
++    assert!(hz > 0);
++    unsafe { CPU_HZ = hz };
++}
++
++/// Set the wall-clock date the machine starts at. Only before it starts.
++pub fn set_epoch(since_unix_epoch: Duration) {
++    unsafe { EPOCH = since_unix_epoch };
++}
++
++/// Nanoseconds of machine time since the machine started.
++pub fn now_ns() -> u64 {
++    unsafe {
++        let ticks_ns = ((TICKS as u128) * 1_000_000_000 / (CPU_HZ as u128)) as u64;
++        IDLE_NS + ticks_ns
++    }
++}
++
++/// Account for instructions the CPU executed.
++pub fn advance_ticks(ticks: u64) {
++    unsafe { TICKS += ticks };
++}
++
++/// Move machine time forward to `ns`, when nothing runs until then. Never
++/// moves it back.
++pub fn advance_to(ns: u64) {
++    let now = now_ns();
++    if ns > now {
++        unsafe { IDLE_NS += ns - now };
++    }
++}
++
++#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
++pub struct Instant(u64);
++
++impl Instant {
++    pub fn now() -> Instant {
++        Instant(now_ns())
++    }
++    /// Nanoseconds since the machine started.
++    pub fn as_nanos(self) -> u64 {
++        self.0
++    }
++    pub fn from_nanos(ns: u64) -> Instant {
++        Instant(ns)
++    }
++    pub fn duration_since(&self, earlier: Instant) -> Duration {
++        self.saturating_duration_since(earlier)
++    }
++    pub fn checked_duration_since(&self, earlier: Instant) -> Option<Duration> {
++        self.0.checked_sub(earlier.0).map(Duration::from_nanos)
++    }
++    pub fn saturating_duration_since(&self, earlier: Instant) -> Duration {
++        Duration::from_nanos(self.0.saturating_sub(earlier.0))
++    }
++    pub fn checked_add(&self, d: Duration) -> Option<Instant> {
++        u64::try_from(d.as_nanos())
++            .ok()
++            .and_then(|d| self.0.checked_add(d))
++            .map(Instant)
++    }
++    pub fn checked_sub(&self, d: Duration) -> Option<Instant> {
++        u64::try_from(d.as_nanos())
++            .ok()
++            .and_then(|d| self.0.checked_sub(d))
++            .map(Instant)
++    }
++    #[allow(dead_code)]
++    pub fn elapsed(&self) -> Duration {
++        Instant::now().duration_since(*self)
++    }
++}
++
++impl std::ops::Add<Duration> for Instant {
++    type Output = Instant;
++    fn add(self, d: Duration) -> Instant {
++        self.checked_add(d)
++            .expect("overflow when adding duration to instant")
++    }
++}
++impl std::ops::AddAssign<Duration> for Instant {
++    fn add_assign(&mut self, d: Duration) {
++        *self = *self + d;
++    }
++}
++impl std::ops::Sub<Duration> for Instant {
++    type Output = Instant;
++    fn sub(self, d: Duration) -> Instant {
++        self.checked_sub(d)
++            .expect("overflow when subtracting duration from instant")
++    }
++}
++impl std::ops::SubAssign<Duration> for Instant {
++    fn sub_assign(&mut self, d: Duration) {
++        *self = *self - d;
++    }
++}
++impl std::ops::Sub<Instant> for Instant {
++    type Output = Duration;
++    fn sub(self, other: Instant) -> Duration {
++        self.duration_since(other)
++    }
++}
++
++/// A date: the time since the Unix epoch. Dates before 1970 are not needed by
++/// anything touchHLE does with them.
++#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
++pub struct SystemTime(Duration);
++
++pub const UNIX_EPOCH: SystemTime = SystemTime(Duration::ZERO);
++
++#[derive(Clone, Debug)]
++pub struct SystemTimeError(Duration);
++impl SystemTimeError {
++    #[allow(dead_code)]
++    pub fn duration(&self) -> Duration {
++        self.0
++    }
++}
++impl std::fmt::Display for SystemTimeError {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        write!(f, "second time provided was later than self")
++    }
++}
++impl std::error::Error for SystemTimeError {}
++
++impl SystemTime {
++    pub const UNIX_EPOCH: SystemTime = UNIX_EPOCH;
++
++    pub fn now() -> SystemTime {
++        SystemTime(unsafe { EPOCH } + Duration::from_nanos(now_ns()))
++    }
++    pub fn duration_since(&self, earlier: SystemTime) -> Result<Duration, SystemTimeError> {
++        self.0
++            .checked_sub(earlier.0)
++            .ok_or_else(|| SystemTimeError(earlier.0 - self.0))
++    }
++    pub fn checked_add(&self, d: Duration) -> Option<SystemTime> {
++        self.0.checked_add(d).map(SystemTime)
++    }
++    pub fn checked_sub(&self, d: Duration) -> Option<SystemTime> {
++        self.0.checked_sub(d).map(SystemTime)
++    }
++    #[allow(dead_code)]
++    pub fn elapsed(&self) -> Result<Duration, SystemTimeError> {
++        SystemTime::now().duration_since(*self)
++    }
++}
++
++/// A date read from or written to app data (a plist's dates) is just a date:
++/// these convert between the two kinds without reading any clock.
++impl From<SystemTime> for std::time::SystemTime {
++    fn from(t: SystemTime) -> std::time::SystemTime {
++        std::time::UNIX_EPOCH + t.0
++    }
++}
++impl From<std::time::SystemTime> for SystemTime {
++    fn from(t: std::time::SystemTime) -> SystemTime {
++        SystemTime(
++            t.duration_since(std::time::UNIX_EPOCH)
++                .unwrap_or(Duration::ZERO),
++        )
++    }
++}
++
++impl std::ops::Add<Duration> for SystemTime {
++    type Output = SystemTime;
++    fn add(self, d: Duration) -> SystemTime {
++        self.checked_add(d)
++            .expect("overflow when adding duration to instant")
++    }
++}
++impl std::ops::Sub<Duration> for SystemTime {
++    type Output = SystemTime;
++    fn sub(self, d: Duration) -> SystemTime {
++        self.checked_sub(d)
++            .expect("overflow when subtracting duration from instant")
++    }
++}
+diff --git a/src/chimera/window.rs b/src/chimera/window.rs
+new file mode 100644
+index 00000000..36b8e73a
+--- /dev/null
++++ b/src/chimera/window.rs
+@@ -0,0 +1,650 @@
++/*
++ * This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
++ */
++//! The window, in Chimera's build: no SDL, no host window, no host input.
++//!
++//! This keeps the public shape of upstream's `window.rs` so nothing else in
++//! touchHLE has to know. What is underneath differs in three ways:
++//!
++//! - **The screen is a memory buffer** drawn by an OpenGL compiled into the
++//!   core: Mesa's softpipe behind OSMesa, which gives the OpenGL 2.1
++//!   compatibility context touchHLE's GLES1-on-GL2 layer asks for. Every
++//!   context touchHLE makes is an OSMesa context rendering into that one
++//!   buffer, and [Window::swap_window] copies the finished picture out for the
++//!   frontend ([video]).
++//! - **Input is a level, not a stream of events.** The frontend says, once per
++//!   frame, where each finger is and how the device is tilted ([set_touch],
++//!   [set_tilt]); [Window::poll_for_events] turns the difference from what the
++//!   app last heard into touch events, one finger at a time, in finger order.
++//! - **Nothing comes from the host**: no locale, no battery, no URL opening,
++//!   no message boxes. The answers are fixed, because they are part of the
++//!   machine.
++
++use crate::gles::present::present_frame;
++use crate::gles::{create_gles1_ctx_no_parent_stack, GLESContext, GLES};
++use crate::image::Image;
++use crate::matrix::Matrix;
++use crate::options::Options;
++use crate::Environment;
++use std::collections::{HashMap, VecDeque};
++use std::f32::consts::{FRAC_PI_2, PI};
++use std::ffi::{c_char, c_void, CString};
++
++#[allow(non_camel_case_types)]
++#[derive(Copy, Clone, Eq, PartialEq, Debug)]
++pub enum DeviceFamily {
++    iPhone,
++    iPad,
++}
++impl std::fmt::Display for DeviceFamily {
++    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
++        std::fmt::Debug::fmt(self, f)
++    }
++}
++impl DeviceFamily {
++    pub fn portrait_size(&self) -> (u32, u32) {
++        match self {
++            DeviceFamily::iPhone => (320, 480),
++            DeviceFamily::iPad => (768, 1024),
++        }
++    }
++}
++impl TryFrom<u64> for DeviceFamily {
++    type Error = ();
++    fn try_from(value: u64) -> Result<Self, Self::Error> {
++        match value {
++            1 => Ok(DeviceFamily::iPhone),
++            2 => Ok(DeviceFamily::iPad),
++            _ => Err(()),
++        }
++    }
++}
++impl TryFrom<&str> for DeviceFamily {
++    type Error = ();
++    fn try_from(value: &str) -> Result<Self, Self::Error> {
++        match value {
++            "iphone" => Ok(DeviceFamily::iPhone),
++            "ipad" => Ok(DeviceFamily::iPad),
++            _ => Err(()),
++        }
++    }
++}
++
++#[derive(Copy, Clone, Eq, PartialEq, Debug)]
++pub enum DeviceOrientation {
++    Portrait,
++    PortraitUpsideDown,
++    LandscapeLeft,
++    LandscapeRight,
++}
++fn size_for_orientation(family: DeviceFamily, orientation: DeviceOrientation) -> (u32, u32) {
++    let (width, height) = family.portrait_size();
++    match orientation {
++        DeviceOrientation::Portrait | DeviceOrientation::PortraitUpsideDown => (width, height),
++        DeviceOrientation::LandscapeLeft | DeviceOrientation::LandscapeRight => (height, width),
++    }
++}
++
++#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
++pub enum FingerId {
++    Mouse,
++    Touch(i64),
++    VirtualCursor,
++    ButtonToTouch(crate::options::Button),
++    StickToTouch,
++    DpadToTouch,
++}
++pub type Coords = (f32, f32);
++
++#[derive(Debug)]
++#[allow(dead_code)]
++pub enum TextInputEvent {
++    Text(String),
++    Backspace,
++    Return,
++}
++
++#[derive(Debug)]
++#[allow(dead_code)]
++pub enum Event {
++    /// User requested quit.
++    Quit,
++    /// OS has informed touchHLE it will soon become inactive.
++    AppWillResignActive,
++    /// OS has informed touchHLE it will soon terminate.
++    AppWillTerminate,
++    TouchesDown(HashMap<FingerId, Coords>),
++    TouchesMove(HashMap<FingerId, Coords>),
++    TouchesUp(HashMap<FingerId, Coords>),
++    /// User pressed F12, requesting that execution be paused and the debugger
++    /// take over.
++    EnterDebugger,
++    TextInput(TextInputEvent),
++}
++
++#[allow(dead_code)]
++pub enum BatteryState {
++    Unknown,
++    OnBattery,
++    NoBattery,
++    Charging,
++    Full,
++}
++
++pub enum GLVersion {
++    /// OpenGL ES 1.1
++    GLES11,
++    /// OpenGL 2.1 compatibility profile
++    GL21Compat,
++}
++
++// ---- OSMesa -----------------------------------------------------------------
++
++type OSMesaContext = *mut c_void;
++const OSMESA_RGBA: u32 = 0x1908;
++const GL_UNSIGNED_BYTE: u32 = 0x1401;
++const OSMESA_Y_UP: i32 = 0x11;
++extern "C" {
++    fn OSMesaCreateContextExt(
++        format: u32,
++        depth_bits: i32,
++        stencil_bits: i32,
++        accum_bits: i32,
++        sharelist: OSMesaContext,
++    ) -> OSMesaContext;
++    fn OSMesaDestroyContext(ctx: OSMesaContext);
++    fn OSMesaMakeCurrent(
++        ctx: OSMesaContext,
++        buffer: *mut c_void,
++        type_: u32,
++        width: i32,
++        height: i32,
++    ) -> u8;
++    fn OSMesaGetCurrentContext() -> OSMesaContext;
++    fn OSMesaGetProcAddress(name: *const c_char) -> *const c_void;
++    fn OSMesaPixelStore(pname: i32, value: i32);
++}
++
++pub struct GLContext(OSMesaContext);
++
++impl GLContext {
++    pub fn is_current(&self) -> bool {
++        unsafe { OSMesaGetCurrentContext() == self.0 }
++    }
++}
++impl Drop for GLContext {
++    fn drop(&mut self) {
++        unsafe { OSMesaDestroyContext(self.0) }
++    }
++}
++
++fn proc_address(name: &str) -> *const c_void {
++    let name = CString::new(name).unwrap();
++    unsafe { OSMesaGetProcAddress(name.as_ptr()) }
++}
++
++// ---- What the frontend sees and says ------------------------------------------
++
++/// Fingers the frontend can hold down at once.
++pub const MAX_FINGERS: usize = 2;
++
++#[derive(Copy, Clone, PartialEq, Debug, Default)]
++struct Finger {
++    down: bool,
++    /// Where it is on the picture as shown, in that picture's pixels.
++    x: f32,
++    y: f32,
++}
++
++struct Shared {
++    /// The last picture swapped to the screen, top row first, BGRA.
++    video: Vec<u8>,
++    video_width: u32,
++    video_height: u32,
++    /// This frame's input, as the frontend set it.
++    fingers: [Finger; MAX_FINGERS],
++    /// Tilt, -1.0..=1.0 on each axis: what an analog stick does upstream.
++    tilt: (f32, f32),
++}
++static mut SHARED: Shared = Shared {
++    video: Vec::new(),
++    video_width: 0,
++    video_height: 0,
++    fingers: [Finger {
++        down: false,
++        x: 0.0,
++        y: 0.0,
++    }; MAX_FINGERS],
++    tilt: (0.0, 0.0),
++};
++// The machine is one thread.
++#[allow(static_mut_refs)]
++fn shared() -> &'static mut Shared {
++    unsafe { &mut SHARED }
++}
++
++/// The last picture the app put on the screen: BGRA, top row first, and its
++/// size. Empty until the first one.
++pub fn video() -> (&'static [u8], u32, u32) {
++    let s = shared();
++    (&s.video, s.video_width, s.video_height)
++}
++
++/// Where finger `index` is this frame, in pixels of the picture as [video]
++/// shows it; `None` if it is not touching the screen.
++pub fn set_touch(index: usize, at: Option<(f32, f32)>) {
++    let finger = &mut shared().fingers[index];
++    *finger = match at {
++        Some((x, y)) => Finger { down: true, x, y },
++        None => Finger {
++            down: false,
++            ..*finger
++        },
++    };
++}
++
++/// How the device is tilted this frame, each axis -1.0..=1.0.
++pub fn set_tilt(x: f32, y: f32) {
++    shared().tilt = (x.clamp(-1.0, 1.0), y.clamp(-1.0, 1.0));
++}
++
++// ---- The window ---------------------------------------------------------------
++
++pub struct Window {
++    /// The screen OSMesa draws into: RGBA, top row first, sized for the
++    /// largest orientation so it never moves.
++    screen: Box<[u8]>,
++    event_queue: VecDeque<Event>,
++    internal_gl_ins: Option<Box<dyn GLESContext>>,
++    splash_image: Option<Image>,
++    device_family: DeviceFamily,
++    device_orientation: DeviceOrientation,
++    share_with_current: bool,
++    screen_saver_enabled: bool,
++    /// What the app has been told about each finger.
++    fingers_heard: [Finger; MAX_FINGERS],
++    /// Whether or not we are on the "main" environment stack (rather than
++    /// a coroutine stack). Kept for upstream's assertions.
++    pub(super) on_main_stack: bool,
++}
++
++impl Window {
++    pub fn rotatable_fullscreen() -> bool {
++        false
++    }
++    pub fn new(
++        _title: &str,
++        _icon: Option<Image>,
++        launch_image: Option<Image>,
++        options: &Options,
++    ) -> Window {
++        let device_family = options.device_family.unwrap_or(DeviceFamily::iPhone);
++        let (w, h) = device_family.portrait_size();
++        let mut window = Window {
++            screen: vec![0u8; (w * h * 4) as usize].into_boxed_slice(),
++            event_queue: VecDeque::new(),
++            internal_gl_ins: None,
++            splash_image: launch_image,
++            device_family,
++            device_orientation: options.initial_orientation,
++            share_with_current: false,
++            screen_saver_enabled: true,
++            fingers_heard: [Finger::default(); MAX_FINGERS],
++            on_main_stack: true,
++        };
++
++        // The OpenGL ES context for the splash screen and app UI rendering
++        // (see src/frameworks/core_animation/composition.rs).
++        let mut gl_ins = create_gles1_ctx_no_parent_stack(&mut window, options);
++        {
++            let gl_ctx = gl_ins.make_current(&mut window);
++            log!("Driver info: {}", unsafe { gl_ctx.driver_description() });
++        }
++        window.internal_gl_ins = Some(gl_ins);
++
++        if window.splash_image.is_some() {
++            window.display_splash();
++        }
++
++        window
++    }
++
++    /// Turn this frame's input into the events the app has not heard yet:
++    /// one event per finger that went down, moved or came up, in finger
++    /// order.
++    pub fn poll_for_events(&mut self, _options: &Options) {
++        let fingers = shared().fingers;
++        for (index, (now, heard)) in fingers
++            .iter()
++            .zip(self.fingers_heard.iter_mut())
++            .enumerate()
++        {
++            let id = FingerId::Touch(index as i64);
++            let event = match (heard.down, now.down) {
++                (false, true) => Some(Event::TouchesDown(HashMap::from([(
++                    id,
++                    transform_input_coords(self.device_family, self.device_orientation, now),
++                )]))),
++                (true, true) if (now.x, now.y) != (heard.x, heard.y) => {
++                    Some(Event::TouchesMove(HashMap::from([(
++                        id,
++                        transform_input_coords(self.device_family, self.device_orientation, now),
++                    )])))
++                }
++                (true, false) => Some(Event::TouchesUp(HashMap::from([(
++                    id,
++                    transform_input_coords(self.device_family, self.device_orientation, heard),
++                )]))),
++                _ => None,
++            };
++            if let Some(event) = event {
++                self.event_queue.push_back(event);
++                *heard = *now;
++            }
++        }
++    }
++
++    /// Pop an event from the queue (in FIFO order)
++    pub fn pop_event(&mut self) -> Option<Event> {
++        self.event_queue.pop_front()
++    }
++
++    pub fn print_accelerometer_notice(&self, _options: &Options) {
++        log!("This app uses the accelerometer: Tilt X and Tilt Y tilt the device.");
++    }
++
++    /// The simulated accelerometer: upstream's analog-stick tilt simulation,
++    /// driven by this frame's tilt.
++    pub fn get_acceleration(&self, options: &Options) -> (f32, f32, f32) {
++        let (x, y) = shared().tilt;
++
++        // Correct for window rotation
++        let [x, y] = self.rotation_matrix().inverse().unwrap().transform([x, y]);
++        let (x, y) = (x.clamp(-1.0, 1.0), y.clamp(-1.0, 1.0)); // just in case
++
++        // Lying flat on its back, the device reports (0, 0, -1); the stick
++        // tilts it about the x and y axes (see upstream's window.rs).
++        let gravity: [f32; 3] = [0.0, 0.0, -1.0];
++        let neutral_x = options.x_tilt_offset.to_radians();
++        let neutral_y = options.y_tilt_offset.to_radians();
++        let x_rotation_range = options.x_tilt_range.to_radians() / 2.0;
++        let y_rotation_range = options.y_tilt_range.to_radians() / 2.0;
++        let x_rotation = neutral_x - x_rotation_range * y;
++        let y_rotation = neutral_y - y_rotation_range * x;
++        let matrix =
++            Matrix::<3>::y_rotation(y_rotation).multiply(&Matrix::<3>::x_rotation(x_rotation));
++        let [x, y, z] = matrix.transform(gravity);
++        (x, y, z)
++    }
++
++    pub fn virtual_cursor_visible_at(&self) -> Option<(f32, f32, bool)> {
++        None
++    }
++
++    pub fn create_gl_context(&self, version: GLVersion) -> Result<GLContext, String> {
++        match version {
++            GLVersion::GLES11 => Err("this build's OpenGL is desktop OpenGL only".to_string()),
++            GLVersion::GL21Compat => {
++                let share = if self.share_with_current {
++                    unsafe { OSMesaGetCurrentContext() }
++                } else {
++                    std::ptr::null_mut()
++                };
++                let ctx = unsafe { OSMesaCreateContextExt(OSMESA_RGBA, 24, 8, 0, share) };
++                if ctx.is_null() {
++                    Err("OSMesaCreateContextExt failed".to_string())
++                } else {
++                    Ok(GLContext(ctx))
++                }
++            }
++        }
++    }
++
++    pub fn gl_get_proc_address(&self, procname: &str) -> *const std::ffi::c_void {
++        proc_address(procname)
++    }
++
++    pub fn set_share_with_current_context(&mut self, value: bool) {
++        self.share_with_current = value;
++    }
++
++    fn make_current_raw(&mut self, gl_ctx: &GLContext) {
++        let (w, h) = size_for_orientation(self.device_family, self.device_orientation);
++        unsafe {
++            let ok = OSMesaMakeCurrent(
++                gl_ctx.0,
++                self.screen.as_mut_ptr() as *mut c_void,
++                GL_UNSIGNED_BYTE,
++                w as i32,
++                h as i32,
++            );
++            assert!(ok != 0, "OSMesaMakeCurrent failed");
++            // the first row of the buffer is the top of the screen
++            OSMesaPixelStore(OSMESA_Y_UP, 0);
++        }
++    }
++
++    /// # Safety
++    /// As upstream: the context must outlive its use.
++    pub unsafe fn make_gl_context_current(&mut self, gl_ctx: &GLContext) {
++        self.make_current_raw(gl_ctx);
++    }
++
++    /// Make the internal OpenGL ES context (for splash screen and UI rendering)
++    /// current.
++    #[must_use]
++    pub fn make_internal_gl_ctx_current<'win>(&'win mut self) -> Box<dyn GLES + 'win> {
++        let (w, h) = size_for_orientation(self.device_family, self.device_orientation);
++        let screen = self.screen.as_mut_ptr();
++        unsafe {
++            self.internal_gl_ins
++                .as_mut()
++                .unwrap()
++                .make_current_unchecked_for_window(
++                    &mut |gl_ctx| {
++                        let ok = OSMesaMakeCurrent(
++                            gl_ctx.0,
++                            screen as *mut c_void,
++                            GL_UNSIGNED_BYTE,
++                            w as i32,
++                            h as i32,
++                        );
++                        assert!(ok != 0, "OSMesaMakeCurrent failed");
++                        OSMesaPixelStore(OSMESA_Y_UP, 0);
++                    },
++                    &mut |s| proc_address(s),
++                )
++        }
++    }
++
++    fn display_splash(&mut self) {
++        assert!(self.splash_image.is_some());
++
++        // OpenGL ES expects bottom-to-top row order for image data, but our
++        // image data will be top-to-bottom. A reflection transform compensates.
++        let matrix = self.rotation_matrix().multiply(&Matrix::y_flip());
++        let viewport = self.viewport();
++
++        let image = self.splash_image.take().unwrap();
++        unsafe {
++            let mut gl_ctx = self.make_internal_gl_ctx_current();
++
++            use crate::gles::gles11_raw as gles11; // constants only
++
++            let mut texture = 0;
++            gl_ctx.GenTextures(1, &mut texture);
++            gl_ctx.BindTexture(gles11::TEXTURE_2D, texture);
++            let (width, height) = image.dimensions();
++            gl_ctx.TexImage2D(
++                gles11::TEXTURE_2D,
++                0,
++                gles11::RGBA as _,
++                width as _,
++                height as _,
++                0,
++                gles11::RGBA,
++                gles11::UNSIGNED_BYTE,
++                image.pixels().as_ptr() as *const _,
++            );
++            gl_ctx.TexParameteri(
++                gles11::TEXTURE_2D,
++                gles11::TEXTURE_MIN_FILTER,
++                gles11::LINEAR as _,
++            );
++            gl_ctx.TexParameteri(
++                gles11::TEXTURE_2D,
++                gles11::TEXTURE_MAG_FILTER,
++                gles11::LINEAR as _,
++            );
++
++            present_frame(gl_ctx.as_mut(), viewport, matrix, None);
++
++            gl_ctx.DeleteTextures(1, &texture);
++        };
++        self.splash_image = Some(image);
++
++        self.swap_window();
++    }
++
++    /// Present what was drawn: wait for OpenGL to finish it, then copy the
++    /// screen out for the frontend.
++    pub fn swap_window(&self) {
++        let finish = proc_address("glFinish");
++        assert!(!finish.is_null());
++        // OSMesa copies the picture into the screen buffer on glFinish.
++        unsafe { std::mem::transmute::<*const c_void, extern "C" fn()>(finish)() };
++
++        let (w, h) = size_for_orientation(self.device_family, self.device_orientation);
++        let s = shared();
++        let len = (w * h * 4) as usize;
++        s.video.resize(len, 0);
++        for (dst, src) in s
++            .video
++            .chunks_exact_mut(4)
++            .zip(self.screen[..len].chunks_exact(4))
++        {
++            dst[0] = src[2];
++            dst[1] = src[1];
++            dst[2] = src[0];
++            dst[3] = 0xff;
++        }
++        s.video_width = w;
++        s.video_height = h;
++    }
++
++    /// Consider the emulated device to be rotated to a particular orientation:
++    /// the picture changes shape.
++    pub fn rotate_device(&mut self, new_orientation: DeviceOrientation) {
++        if new_orientation == self.device_orientation {
++            return;
++        }
++        self.device_orientation = new_orientation;
++        if self.splash_image.is_some() {
++            self.display_splash();
++        }
++    }
++
++    pub fn device_family(&self) -> DeviceFamily {
++        self.device_family
++    }
++
++    /// Returns the current device orientation
++    pub fn current_rotation(&self) -> DeviceOrientation {
++        self.device_orientation
++    }
++
++    /// Get the size in pixels of the window without rotation or scaling.
++    pub fn size_unrotated_unscaled(&self) -> (u32, u32) {
++        self.device_family.portrait_size()
++    }
++
++    /// The region of the screen (x, y, width, height) used to display the app
++    /// content: all of it.
++    pub fn viewport(&self) -> (u32, u32, u32, u32) {
++        let (w, h) = size_for_orientation(self.device_family, self.device_orientation);
++        (0, 0, w, h)
++    }
++
++    pub fn viewport_y_offset(&self) -> u32 {
++        0
++    }
++
++    /// Transformation matrix between the window's co-ordinate space and the
++    /// app's when rotation is in use (see upstream's window.rs).
++    pub fn rotation_matrix(&self) -> Matrix<2> {
++        rotation_matrix(self.device_orientation)
++    }
++
++    pub fn is_screen_saver_enabled(&self) -> bool {
++        self.screen_saver_enabled
++    }
++    pub fn set_screen_saver_enabled(&mut self, enabled: bool) {
++        self.screen_saver_enabled = enabled;
++    }
++
++    pub fn start_text_input(&self) {}
++    pub fn stop_text_input(&self) {}
++
++    pub fn on_main_stack(&self) -> bool {
++        self.on_main_stack
++    }
++}
++
++fn rotation_matrix(orientation: DeviceOrientation) -> Matrix<2> {
++    match orientation {
++        DeviceOrientation::Portrait => Matrix::identity(),
++        DeviceOrientation::PortraitUpsideDown => Matrix::z_rotation(PI),
++        DeviceOrientation::LandscapeLeft => Matrix::z_rotation(-FRAC_PI_2),
++        DeviceOrientation::LandscapeRight => Matrix::z_rotation(FRAC_PI_2),
++    }
++}
++
++/// A point on the picture as shown to where the app thinks it was touched
++/// (upstream's transform_input_coords, with the whole picture as viewport).
++fn transform_input_coords(
++    family: DeviceFamily,
++    orientation: DeviceOrientation,
++    finger: &Finger,
++) -> Coords {
++    let (vw, vh) = size_for_orientation(family, orientation);
++    // normalize to unit square centred on origin
++    let x = finger.x / vw as f32 - 0.5;
++    let y = finger.y / vh as f32 - 0.5;
++    // rotate
++    let matrix = rotation_matrix(orientation).inverse().unwrap();
++    let [x, y] = matrix.transform([x, y]);
++    // back to pixels
++    let (out_w, out_h) = family.portrait_size();
++    let out_x = (x + 0.5) * out_w as f32;
++    let out_y = (y + 0.5) * out_h as f32;
++    // Round to match touch precision of official devices.
++    (out_x.round(), out_y.round())
++}
++
++pub fn open_url(_env: &mut Environment, url: &str) -> Result<(), String> {
++    Err(format!("this machine cannot open {url}"))
++}
++
++/// Upstream shows a message box; here the error is all there is to say.
++pub fn show_error_messagebox(_window: Option<&Window>, error_message: &str) {
++    echo!(
++        "touchHLE crashed with the following error: {}",
++        error_message
++    );
++}
++
++/// A fixed answer: the battery is part of the machine.
++pub fn get_battery_status() -> (i32, BatteryState) {
++    (100, BatteryState::Full)
++}
++
++/// A fixed answer: the locale is part of the machine.
++pub fn get_preferred_language_codes(_env: &mut Environment) -> Vec<String> {
++    vec!["en".to_string()]
++}
++
++pub fn get_preferred_country_codes(_env: &mut Environment) -> Vec<String> {
++    vec!["US".to_string()]
++}
+diff --git a/src/environment.rs b/src/environment.rs
+index 131c45d6..680f4e61 100644
+--- a/src/environment.rs
++++ b/src/environment.rs
+@@ -17,6 +17,7 @@ use crate::audio::openal::OpenALManager;
+ use crate::cpu::Cpu;
+ use crate::libc::semaphore::sem_t;
+ use crate::mem::{GuestUSize, MutPtr, MutVoidPtr};
++use crate::time::{Instant, SystemTime};
+ use crate::{
+     abi, bundle, cpu, dyld, frameworks, fs, gdb, image, libc, mach_o, mem, objc, options, stack,
+     window,
+@@ -25,7 +26,7 @@ use std::cell::Cell;
+ use std::collections::{HashMap, HashSet, VecDeque};
+ use std::net::TcpListener;
+ use std::rc::Rc;
+-use std::time::{Duration, Instant, SystemTime};
++use std::time::Duration;
+ 
+ use crate::libc::pthread::cond::pthread_cond_t;
+ use crate::libc::stdio::FILE;
+@@ -1426,6 +1427,11 @@ impl Environment {
+                 // Polling for events can be quite expensive, so we shouldn't do
+                 // this until after we've done some amount of work on the guest
+                 // thread, lest every single callback call pay this cost.
++                // In Chimera's build this is also where a frame ends: between
++                // two threads' turns, once machine time has passed the end of
++                // the frame (which polls for the next frame's input itself).
++                #[cfg(feature = "chimera")]
++                crate::chimera::frame_boundary(&mut self);
+                 if let Some(ref mut window) = self.window {
+                     window.poll_for_events(&self.options);
+                 }
+@@ -1647,9 +1653,19 @@ impl Environment {
+                 .remaining_ticks
+                 .is_none_or(|remaining_ticks| remaining_ticks > 0)
+             {
++                #[cfg(feature = "chimera")]
++                let ticks_before = self.remaining_ticks;
+                 let state = self
+                     .cpu
+                     .run_or_step(&mut self.mem, self.remaining_ticks.as_mut());
++                // Machine time is bought with executed instructions, before
++                // whatever the CPU stopped for (an SVC into a host function
++                // that reads the clock, say) gets to see it.
++                #[cfg(feature = "chimera")]
++                crate::time::advance_ticks(match (ticks_before, self.remaining_ticks) {
++                    (Some(before), Some(after)) => before - after,
++                    _ => 1, // a single step
++                });
+ 
+                 match self.handle_cpu_state(state) {
+                     ThreadNextAction::Continue => {
+@@ -1855,6 +1871,11 @@ impl Environment {
+             if let Some(next_awakening) = next_awakening {
+                 let duration = next_awakening.duration_since(Instant::now());
+                 log_dbg!("All threads blocked/asleep, sleeping for {:?}.", duration);
++                // Machine time jumps to the deadline instead, and a frame
++                // that ends on the way ends there.
++                #[cfg(feature = "chimera")]
++                crate::chimera::idle_until(self, next_awakening);
++                #[cfg(not(feature = "chimera"))]
+                 std::thread::sleep(duration);
+                 // Try again, there should be some thread awake now (or
+                 // there will be soon, since timing is approximate).
+diff --git a/src/frameworks/audio_toolbox/audio_components.rs b/src/frameworks/audio_toolbox/audio_components.rs
+index 4f0e4ad6..fa00d0ce 100644
+--- a/src/frameworks/audio_toolbox/audio_components.rs
++++ b/src/frameworks/audio_toolbox/audio_components.rs
+@@ -5,8 +5,8 @@
+  */
+ //! `AudioComponent.h` (Audio Component Services)
+ 
++use crate::time::Instant;
+ use std::collections::HashMap;
+-use std::time::Instant;
+ 
+ use crate::abi::GuestFunction;
+ use crate::audio::openal::al_types::ALuint;
+diff --git a/src/frameworks/audio_toolbox/audio_unit.rs b/src/frameworks/audio_toolbox/audio_unit.rs
+index ea88f560..fed1dbc1 100644
+--- a/src/frameworks/audio_toolbox/audio_unit.rs
++++ b/src/frameworks/audio_toolbox/audio_unit.rs
+@@ -7,7 +7,7 @@
+ //!
+ //! [Audio Unit Programming Guide](https://developer.apple.com/library/archive/documentation/MusicAudio/Conceptual/AudioUnitProgrammingGuide/TheAudioUnit/TheAudioUnit.html)
+ 
+-use std::time::Instant;
++use crate::time::Instant;
+ 
+ use crate::audio::openal::al_types::{ALuint, ALvoid};
+ use crate::audio::openal::{AL_BUFFERS_PROCESSED, AL_PLAYING, AL_SOURCE_STATE};
+diff --git a/src/frameworks/core_animation.rs b/src/frameworks/core_animation.rs
+index 2e9b52ad..9d05f032 100644
+--- a/src/frameworks/core_animation.rs
++++ b/src/frameworks/core_animation.rs
+@@ -22,8 +22,8 @@ pub use composition::recomposite_if_necessary;
+ 
+ use crate::dyld::{export_c_func, FunctionExports};
+ use crate::frameworks::core_foundation::time::CFTimeInterval;
++use crate::time::Instant;
+ use crate::Environment;
+-use std::time::Instant;
+ 
+ pub const DYLIB: crate::dyld::HostDylib = crate::dyld::HostDylib {
+     // Core Animation is considered its own framework, but it technically lives
+diff --git a/src/frameworks/core_animation/composition.rs b/src/frameworks/core_animation/composition.rs
+index 84706130..248ae576 100644
+--- a/src/frameworks/core_animation/composition.rs
++++ b/src/frameworks/core_animation/composition.rs
+@@ -23,8 +23,9 @@ use crate::image::Image;
+ use crate::matrix::Matrix;
+ use crate::mem::SafeWrite;
+ use crate::objc::{id, msg, msg_class, nil, ObjC};
++use crate::time::Instant;
+ use crate::Environment;
+-use std::time::{Duration, Instant};
++use std::time::Duration;
+ 
+ #[derive(Default)]
+ pub(super) struct State {
+diff --git a/src/frameworks/core_foundation/time.rs b/src/frameworks/core_foundation/time.rs
+index 1378dd8e..b0429a6e 100644
+--- a/src/frameworks/core_foundation/time.rs
++++ b/src/frameworks/core_foundation/time.rs
+@@ -11,9 +11,10 @@ use crate::frameworks::foundation::NSTimeInterval;
+ use crate::libc::time::{time_t, timestamp_to_calendar_date};
+ use crate::mem::SafeRead;
+ use crate::objc::nil;
++use crate::time::SystemTime;
+ use crate::{impl_GuestRet_for_large_struct, Environment};
+ use std::ops::Add;
+-use std::time::{Duration, SystemTime};
++use std::time::Duration;
+ 
+ /// Seconds between Unix and Apple's epochs
+ pub const SECS_FROM_UNIX_TO_APPLE_EPOCHS: u64 = 978_307_200;
+diff --git a/src/frameworks/foundation/ns_date.rs b/src/frameworks/foundation/ns_date.rs
+index 160378ad..50f73170 100644
+--- a/src/frameworks/foundation/ns_date.rs
++++ b/src/frameworks/foundation/ns_date.rs
+@@ -16,8 +16,9 @@ use crate::objc::{
+ };
+ 
+ use crate::frameworks::foundation::ns_keyed_unarchiver::decode_current_date;
++use crate::time::SystemTime;
+ use std::ops::{Add, Sub};
+-use std::time::{Duration, SystemTime};
++use std::time::Duration;
+ 
+ #[derive(Default)]
+ pub(super) struct NSDateHostObject {
+diff --git a/src/frameworks/foundation/ns_process_info.rs b/src/frameworks/foundation/ns_process_info.rs
+index c95dbd1b..bc14090b 100644
+--- a/src/frameworks/foundation/ns_process_info.rs
++++ b/src/frameworks/foundation/ns_process_info.rs
+@@ -9,8 +9,8 @@ use super::NSTimeInterval;
+ use crate::frameworks::foundation::ns_string;
+ use crate::libc::mach::host::PHYSICAL_MEMORY;
+ use crate::objc::{id, msg, msg_class, objc_classes, ClassExports};
++use crate::time::Instant;
+ use crate::Environment;
+-use std::time::Instant;
+ 
+ #[derive(Default)]
+ pub struct State {
+diff --git a/src/frameworks/foundation/ns_property_list_serialization.rs b/src/frameworks/foundation/ns_property_list_serialization.rs
+index d4107df8..804dfb9d 100644
+--- a/src/frameworks/foundation/ns_property_list_serialization.rs
++++ b/src/frameworks/foundation/ns_property_list_serialization.rs
+@@ -195,7 +195,10 @@ fn deserialize_plist(
+         }
+         Value::Date(date_val) => {
+             let time: SystemTime = (*date_val).into();
+-            let time_interval = time.duration_since(apple_epoch()).unwrap().as_secs_f64();
++            let time_interval = time
++                .duration_since(apple_epoch().into())
++                .unwrap()
++                .as_secs_f64();
+             let date: id = msg_class![env; NSDate alloc];
+             msg![env; date initWithTimeIntervalSinceReferenceDate:time_interval]
+         }
+@@ -310,7 +313,7 @@ fn serialize_plist(env: &mut Environment, plist: id) -> Value {
+     } else if class == env.objc.get_known_class("NSDate", &mut env.mem) {
+         let date = env.objc.borrow::<NSDateHostObject>(plist);
+         let time = apple_epoch().add(Duration::from_secs_f64(date.time_interval));
+-        Value::Date(time.into())
++        Value::Date(SystemTime::from(time).into())
+     } else {
+         unimplemented!("class {}", env.objc.get_class_name(class))
+     }
+diff --git a/src/frameworks/foundation/ns_run_loop.rs b/src/frameworks/foundation/ns_run_loop.rs
+index f473e095..24bf7f9a 100644
+--- a/src/frameworks/foundation/ns_run_loop.rs
++++ b/src/frameworks/foundation/ns_run_loop.rs
+@@ -23,9 +23,10 @@ use crate::mem::MutPtr;
+ use crate::objc::{
+     id, msg, msg_send, nil, objc_classes, release, retain, Class, ClassExports, HostObject, SEL,
+ };
++use crate::time::{Instant, SystemTime, UNIX_EPOCH};
+ use crate::Environment;
+ use std::collections::VecDeque;
+-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
++use std::time::Duration;
+ 
+ /// `NSString*`
+ pub type NSRunLoopMode = id;
+diff --git a/src/frameworks/foundation/ns_timer.rs b/src/frameworks/foundation/ns_timer.rs
+index 68fc992d..de141085 100644
+--- a/src/frameworks/foundation/ns_timer.rs
++++ b/src/frameworks/foundation/ns_timer.rs
+@@ -12,8 +12,9 @@ use crate::objc::{
+     autorelease, id, msg, msg_class, msg_send, nil, objc_classes, release, retain, ClassExports,
+     HostObject, SEL,
+ };
++use crate::time::Instant;
+ use crate::Environment;
+-use std::time::{Duration, Instant};
++use std::time::Duration;
+ 
+ struct NSTimerHostObject {
+     ns_interval: NSTimeInterval,
+diff --git a/src/frameworks/media_player/movie_player.rs b/src/frameworks/media_player/movie_player.rs
+index 63a782f5..5d0166c3 100644
+--- a/src/frameworks/media_player/movie_player.rs
++++ b/src/frameworks/media_player/movie_player.rs
+@@ -12,9 +12,10 @@ use crate::objc::{
+     id, msg, msg_class, nil, objc_classes, release, retain, todo_objc_setter, ClassExports,
+     HostObject, NSZonePtr,
+ };
++use crate::time::Instant;
+ use crate::Environment;
+ use std::collections::VecDeque;
+-use std::time::{Duration, Instant};
++use std::time::Duration;
+ 
+ #[derive(Default)]
+ pub struct State {
+diff --git a/src/frameworks/opengles/eagl.rs b/src/frameworks/opengles/eagl.rs
+index 32a0b5ce..51195fdf 100644
+--- a/src/frameworks/opengles/eagl.rs
++++ b/src/frameworks/opengles/eagl.rs
+@@ -19,11 +19,12 @@ use crate::gles::{create_gles1_ctx, gles1_on_gl2, GLESContext, GLES};
+ use crate::mem::MutPtr;
+ use crate::objc::{id, msg, nil, objc_classes, release, retain, ClassExports, HostObject};
+ use crate::options::Options;
++use crate::time::Instant;
+ use crate::Environment;
+ use std::cell::RefCell;
+ use std::collections::HashMap;
+ use std::rc::Rc;
+-use std::time::{Duration, Instant};
++use std::time::Duration;
+ 
+ // These are used by the EAGLDrawable protocol implemented by CAEAGLayer.
+ // Since these have the ABI of constant symbols rather than literal constants,
+diff --git a/src/frameworks/uikit.rs b/src/frameworks/uikit.rs
+index c8e67732..eb1ae844 100644
+--- a/src/frameworks/uikit.rs
++++ b/src/frameworks/uikit.rs
+@@ -9,8 +9,8 @@
+ //! likely to use UIKit in very simple and limited ways, so this implementation
+ //! will probably take a lot of shortcuts.
+ 
++use crate::time::Instant;
+ use crate::{msg, Environment};
+-use std::time::Instant;
+ 
+ pub mod ui_accelerometer;
+ pub mod ui_activity_indicator_view;
+diff --git a/src/frameworks/uikit/ui_accelerometer.rs b/src/frameworks/uikit/ui_accelerometer.rs
+index d768521a..a555fc45 100644
+--- a/src/frameworks/uikit/ui_accelerometer.rs
++++ b/src/frameworks/uikit/ui_accelerometer.rs
+@@ -13,8 +13,9 @@ use crate::objc::{
+     autorelease, id, msg, msg_class, nil, objc_classes, release, ClassExports, HostObject,
+     NSZonePtr, TrivialHostObject, SEL,
+ };
++use crate::time::Instant;
+ use crate::Environment;
+-use std::time::{Duration, Instant};
++use std::time::Duration;
+ 
+ #[derive(Default)]
+ pub struct State {
+diff --git a/src/gles/present.rs b/src/gles/present.rs
+index 2a140b6a..0f6095de 100644
+--- a/src/gles/present.rs
++++ b/src/gles/present.rs
+@@ -9,10 +9,11 @@
+ use super::gles11_raw as gles11; // constants and types only
+ use super::GLES;
+ use crate::matrix::Matrix;
+-use std::time::{Duration, Instant};
++use crate::time::Instant;
++use std::time::Duration;
+ 
+ pub struct FpsCounter {
+-    time: std::time::Instant,
++    time: crate::time::Instant,
+     frames: u32,
+ }
+ impl FpsCounter {
+diff --git a/src/lib.rs b/src/lib.rs
+index fcfec3fb..177bbceb 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -49,8 +49,26 @@ mod objc;
+ mod options;
+ mod paths;
+ mod stack;
++// Chimera's build has no SDL: its window is a memory buffer drawn by an
++// OpenGL compiled into the core, and its input is what the frontend says is
++// held this frame.
++#[cfg_attr(feature = "chimera", path = "chimera/window.rs")]
+ mod window;
+ 
++/// The clocks the app sees. Chimera's build gives it virtual ones, bought with
++/// executed instructions (chimera/time.rs).
++#[cfg(feature = "chimera")]
++#[path = "chimera/time.rs"]
++pub mod time;
++#[cfg(not(feature = "chimera"))]
++mod time {
++    pub use std::time::{Instant, SystemTime, UNIX_EPOCH};
++}
++
++/// What the Chimera core drives: a machine that runs a frame at a time.
++#[cfg(feature = "chimera")]
++pub mod chimera;
++
+ // Environment is used very frequently used and used to be in this module, so
+ // it is re-exported to avoid having to update lots of imports. The other things
+ // probably shouldn't be, but they need a new home (TODO).
+diff --git a/src/libc/mach/time.rs b/src/libc/mach/time.rs
+index ce0772b0..367f5514 100644
+--- a/src/libc/mach/time.rs
++++ b/src/libc/mach/time.rs
+@@ -7,8 +7,8 @@
+ 
+ use crate::dyld::{export_c_func, FunctionExports};
+ use crate::mem::{MutPtr, SafeRead};
++use crate::time::Instant;
+ use crate::Environment;
+-use std::time::Instant;
+ 
+ #[repr(C, packed)]
+ struct struct_mach_timebase_info {
+diff --git a/src/libc/stdlib.rs b/src/libc/stdlib.rs
+index 060d1b64..54b8c2c3 100644
+--- a/src/libc/stdlib.rs
++++ b/src/libc/stdlib.rs
+@@ -13,9 +13,9 @@ use crate::libc::errno::{set_errno, EINVAL};
+ use crate::libc::string::strlen;
+ use crate::libc::wchar::wchar_t;
+ use crate::mem::{ConstPtr, ConstVoidPtr, GuestUSize, MutPtr, MutVoidPtr, Ptr, SafeRead};
++use crate::time::SystemTime;
+ use crate::{impl_GuestRet_for_large_struct, Environment};
+ use std::str::FromStr;
+-use std::time::SystemTime;
+ 
+ pub mod qsort;
+ 
+diff --git a/src/libc/sys/timeb.rs b/src/libc/sys/timeb.rs
+index 01250c58..c0d70d55 100644
+--- a/src/libc/sys/timeb.rs
++++ b/src/libc/sys/timeb.rs
+@@ -8,8 +8,8 @@
+ use crate::dyld::FunctionExports;
+ use crate::libc::time::time_t;
+ use crate::mem::{MutPtr, SafeRead};
++use crate::time::SystemTime;
+ use crate::{export_c_func, Environment};
+-use std::time::SystemTime;
+ 
+ #[allow(non_camel_case_types)]
+ #[repr(C, packed)]
+diff --git a/src/libc/time.rs b/src/libc/time.rs
+index 37ee9472..9274ca83 100644
+--- a/src/libc/time.rs
++++ b/src/libc/time.rs
+@@ -10,9 +10,10 @@ use crate::libc::clocale::{setlocale, LC_CTYPE};
+ use crate::libc::errno::set_errno;
+ use crate::libc::stdio::printf::{isspace, isspace_inner};
+ use crate::mem::{guest_size_of, ConstPtr, GuestUSize, MutPtr, Ptr, SafeRead};
++use crate::time::{Instant, SystemTime};
+ use crate::Environment;
+ use std::ops::Range;
+-use std::time::{Duration, Instant, SystemTime};
++use std::time::Duration;
+ 
+ #[derive(Default)]
+ pub struct State {
+diff --git a/src/log.rs b/src/log.rs
+index af0ae3ad..a5175d2a 100644
+--- a/src/log.rs
++++ b/src/log.rs
+@@ -5,7 +5,9 @@
+  */
+ //! Logging and terminal output macros.
+ 
++#[cfg(not(feature = "chimera"))]
+ use std::fs::File;
++#[cfg(not(feature = "chimera"))]
+ use std::sync::LazyLock;
+ 
+ /// Get a handle to the log file. This is only for use by logging macros!
+@@ -13,6 +15,7 @@ use std::sync::LazyLock;
+ /// All the logging macros print to stderr or (on Android) logcat, but this
+ /// is not convenient for users who aren't accustomed to command-line tools or
+ /// who don't have access to ADB, so we also write to a log file.
++#[cfg(not(feature = "chimera"))]
+ pub fn get_log_file() -> &'static File {
+     static LOG_FILE: LazyLock<File> = LazyLock::new(|| {
+         File::create(crate::paths::user_data_base_path().join("touchHLE_log.txt")).unwrap()
+@@ -21,6 +24,13 @@ pub fn get_log_file() -> &'static File {
+     &LOG_FILE
+ }
+ 
++/// Chimera's build writes no files of its own: what touchHLE says goes to
++/// stderr only.
++#[cfg(feature = "chimera")]
++pub fn get_log_file() -> std::io::Sink {
++    std::io::sink()
++}
++
+ /// Prints a log message unconditionally. Use this for errors or warnings.
+ ///
+ /// The message is prefixed with the module path, so it is clear where it comes
+diff --git a/src/paths.rs b/src/paths.rs
+index d0ab20b8..353b58e7 100644
+--- a/src/paths.rs
++++ b/src/paths.rs
+@@ -43,7 +43,11 @@ fn get_macos_bundled_resources_path() -> Option<PathBuf> {
+     if std::env::consts::OS != "macos" {
+         return None;
+     }
++    #[cfg(not(feature = "sdl"))]
++    return None;
++    #[cfg(feature = "sdl")]
+     let base_path = PathBuf::from(sdl2::filesystem::base_path().ok()?);
++    #[cfg(feature = "sdl")]
+     if base_path.file_name().is_some_and(|p| p == "Resources") {
+         Some(base_path)
+     } else {
+@@ -54,21 +58,31 @@ fn get_macos_bundled_resources_path() -> Option<PathBuf> {
+ /// Abstraction over a platform-specific type for accessing a resource bundled
+ /// with touchHLE.
+ pub struct ResourceFile {
+-    #[cfg(target_os = "android")]
++    #[cfg(all(target_os = "android", not(feature = "chimera")))]
+     file: sdl2::rwops::RWops<'static>,
+-    #[cfg(not(target_os = "android"))]
++    #[cfg(all(not(target_os = "android"), not(feature = "chimera")))]
+     file: std::fs::File,
++    /// Chimera's build carries its resources inside itself
++    /// (chimera/resources.rs).
++    #[cfg(feature = "chimera")]
++    file: std::io::Cursor<&'static [u8]>,
+ }
+ impl ResourceFile {
+     pub fn open(path: &str) -> Result<Self, String> {
+         Ok(Self {
+             // On Android, these resources are included as "assets" within the
+             // APK. We access them via SDL2's wrapper of Android's assets API.
+-            #[cfg(target_os = "android")]
++            #[cfg(all(target_os = "android", not(feature = "chimera")))]
+             file: sdl2::rwops::RWops::from_file(path, "r")?,
+ 
++            #[cfg(feature = "chimera")]
++            file: std::io::Cursor::new(
++                crate::chimera::resources::get(path)
++                    .ok_or_else(|| format!("{path} is not built into this core"))?,
++            ),
++
+             // On other OSes, resources are accessed as ordinary files.
+-            #[cfg(not(target_os = "android"))]
++            #[cfg(all(not(target_os = "android"), not(feature = "chimera")))]
+             file: {
+                 let base_path = get_macos_bundled_resources_path();
+                 // When not in a bundle, look in the current directory.
+@@ -139,6 +153,7 @@ pub fn user_data_base_path() -> Cow<'static, Path> {
+         // When touchHLE is run from a .app bundle on macOS, the user might not
+         // be able to control the current directory, so user data needs to go in
+         // a standard location.
++        #[cfg(feature = "sdl")]
+         if get_macos_bundled_resources_path().is_some() {
+             return Cow::from(PathBuf::from(
+                 sdl2::filesystem::pref_path("touchhle.org", "touchHLE").unwrap(),

@@ -1,0 +1,24 @@
+[package]
+name = "touchhle_guest"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# The core: touchHLE driven a frame at a time, behind the exports the engine
+# calls (src/lib.rs). Built twice from this one crate:
+#   - for the miniBox guest, as a staticlib that build-guest.sh links into
+#     core.wbx;
+#   - for the host, as the rlib the native reference (../run-native) calls
+#     exactly as the engine would.
+[lib]
+name = "touchhle_guest"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# The pinned touchHLE checkout with this repository's patches applied; its
+# "chimera" feature is the frame-at-a-time machine without SDL.
+touchHLE = { path = "../../extern/touchHLE", default-features = false, features = ["chimera", "static"] }
+
+[profile.release]
+opt-level = 2
+debug = 1
