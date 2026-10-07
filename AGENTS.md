@@ -92,8 +92,7 @@ changes) and is for testing. CI stamps the commit and publishes the `dev` and
 
 ## Test before you commit
 
-Build the package first (the gate's native reference needs the patches
-applied), then:
+The gate applies the patches and builds what it runs:
 
 ```sh
 ./waterbox/run-gate.sh -m <minibox> -r <chimera>

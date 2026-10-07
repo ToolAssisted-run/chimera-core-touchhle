@@ -59,6 +59,9 @@ if [ "$rebuild" = 1 ]; then
 	export BOOST_INCLUDEDIR="$root/extern/ext-boost"
 	bash "$here/setup-mesa.sh" -n -j "$jobs" > "$work/build-mesa-native.log" 2>&1 &&
 	bash "$here/setup-mesa.sh" -m "$minibox" -j "$jobs" > "$work/build-mesa-guest.log" 2>&1 &&
+	# the reference needs the patched tree too, and on a fresh clone it is
+	# built before build-guest.sh has applied the series
+	sh "$here/apply-patches.sh" > "$work/build-patches.log" 2>&1 &&
 	(cd "$here/run-native" && CARGO_TARGET_DIR="$build/run-native" cargo build --release -j "$jobs") \
 		> "$work/build-native.log" 2>&1 &&
 	bash "$here/build-guest.sh" -m "$minibox" -j "$jobs" > "$work/build-guest.log" 2>&1 &&

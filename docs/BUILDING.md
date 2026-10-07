@@ -277,9 +277,9 @@ bash waterbox/setup-mesa.sh -n
   Its `build.rs` stops with `no host Mesa at ... - run waterbox/setup-mesa.sh
   -n first` when that build is missing. `MESA_NATIVE_DIR` names another one.
 - It needs the patches applied: the `chimera` feature it builds touchHLE with
-  comes from them. `run-gate.sh` builds the reference before it runs
-  `build-guest.sh`, so on a fresh clone build the package first, as CI does,
-  or run `waterbox/apply-patches.sh`.
+  comes from them. `run-gate.sh` applies them before it builds the
+  reference; building the reference by hand on a fresh clone, run
+  `waterbox/apply-patches.sh` first.
 
 ## Build the package
 
@@ -433,8 +433,8 @@ files, from `waterbox/file_slots.json`:
 - `extern/touchHLE is partly patched` - see "The patches" above.
 - `the series does not apply to the submodule's HEAD at <patch>` - the
   submodule pin moved and the patches were not rebased.
-- The native reference fails to build on a fresh clone - the patches are not
-  applied yet. See "The native reference" above.
+- The native reference fails to build by hand on a fresh clone - the patches
+  are not applied yet. See "The native reference" above.
 - `build-guest.sh: musl's maths reached the core (...)` - a maths function
   came from musl. Add it to `waterbox/guest/src/mathlib.rs`.
 - `the build failed; see build/gate/build-*.log` - `run-gate.sh` sends each
