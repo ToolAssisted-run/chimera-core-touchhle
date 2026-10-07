@@ -25,3 +25,22 @@ The gate runs on touchHLE's own TestApp and this repository's test apps, all
 built from source, and on any decrypted `.ipa` in `tests/roms-local/`
 (`waterbox/tests/game-list.txt`). Report problems in
 [chimera's issues](https://github.com/ToolAssisted-run/chimera/issues).
+
+## Using it in Chimera
+
+Chimera ships no cores and downloads nothing. Download the `.chimeraCore`
+package from this repository's
+[Releases](https://github.com/ToolAssisted-run/chimera-core-touchhle/releases)
+page, or build it, and put it in the `Cores` folder beside `Chimera.exe` (or
+the folder chosen in File > Core Manager > Change folder...). File > Core
+Manager lists the cores in that folder. The same package works on Linux and on
+Windows.
+
+## Building
+
+`waterbox/build-package.sh -m <miniBox dir> -r <chimera checkout>` builds the
+guest Mesa and the core and writes
+`<chimera checkout>/build/Cores/touchhle.chimeraCore`. The requirements, the
+steps that come before it and the gate are in
+[docs/BUILDING.md](docs/BUILDING.md). [AGENTS.md](AGENTS.md) is the short
+operating guide for a coding agent.
