@@ -1,5 +1,5 @@
 {
-  "_comment": "An iPhone OS project is one app, and whatever it already saved. touchHLE needs nothing else: it carries its own system libraries and fonts.",
+  "_comment": "This file lists the kinds of file an iPhone OS project can hold. Chimera's New Project window is built from it. A project is one app, and optionally what the app already saved. touchHLE needs nothing else, because it brings its own system libraries and fonts.",
   "slots": [
     {
       "id": "game",
@@ -7,7 +7,7 @@
       "min": 1,
       "max": 1,
       "formats": ["ipa"],
-      "help": "A DECRYPTED .ipa for iPhone OS 2.x to iOS 4.0. An App Store download is encrypted and will not run; touchHLE's compatibility database (appdb.touchhle.org) says which apps and versions work."
+      "help": "A DECRYPTED .ipa file for iPhone OS 2.x to iOS 4.0. An app downloaded from the App Store is encrypted and does not run. touchHLE's compatibility database (appdb.touchhle.org) lists which apps and versions work."
     },
     {
       "id": "savedata",
@@ -15,7 +15,7 @@
       "min": 0,
       "max": 1,
       "formats": ["zip"],
-      "help": "What the app already saved, as Emulator > Export Save Data... wrote it: a .zip of the app's Documents and Library folders. It goes back into the app's home before the app starts."
+      "help": "What the app already saved, as Emulator > Export Save Data... wrote it. It is a .zip of the app's Documents and Library folders. They are put back into the app's home folder before the app starts."
     }
   ]
 }
