@@ -250,7 +250,9 @@ for f in range(240):
     out.append('|' + ''.join('%5d,' % v for v in ax) + ('1' if down else '.') + '.|')
 open(path, 'w').write('\n'.join(out) + '\n')
 PY
-	box "$run" "$pkg" "$apps/TestApp.ipa" "$work/tap.movie" --screenshot 239="$work/tap-engine.tga" > "$work/engine.out" 2>&1
+	# a game runs only in a project (Chimera, 2026-10-26): one of the app and the movie
+	"$run" --new-project "$work/tap.chimeraProject" "$pkg" "$apps/TestApp.ipa" "$work/tap.movie" > "$work/tap.make.log" 2>&1
+	box "$run" --project "$work/tap.chimeraProject" "$pkg" --files "$apps" --screenshot 239="$work/tap-engine.tga" > "$work/engine.out" 2>&1
 	a="$(ffmpeg -loglevel error -i "$work/tap-engine.tga" -f rawvideo -pix_fmt rgb24 - 2>/dev/null | sha1sum)"
 	b="$(ffmpeg -loglevel error -i "$work/tap-wbx.tga" -f rawvideo -pix_fmt rgb24 - 2>/dev/null | sha1sum)"
 	if grep -q '^frames=240' "$work/engine.out" && [ "$a" = "$b" ]; then
