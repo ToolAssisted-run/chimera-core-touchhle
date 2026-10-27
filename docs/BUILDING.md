@@ -25,7 +25,7 @@ Commands are run from `<core>` unless a `cd` says otherwise.
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y --no-install-recommends meson ninja-build build-essential cmake pkg-config python3 bison flex python3-mako python3-packaging clang ffmpeg mono-complete libgl1-mesa-dev libx11-dev libxext-dev libasound2-dev
+sudo apt-get install -y --no-install-recommends meson ninja-build build-essential cmake pkg-config python3 bison flex python3-mako python3-packaging clang ffmpeg libgl1-mesa-dev libx11-dev libxext-dev libasound2-dev
 ```
 
 What the less obvious ones are for:
@@ -33,8 +33,8 @@ What the less obvious ones are for:
 - `clang` - compiles the gate's test apps for the iPhone
   (`waterbox/build-testapp.py`, `--target=arm-apple-ios`).
 - `ffmpeg` - reads the screenshots the gate's engine leg compares.
-- `mono-complete` and .NET - build Chimera, for `chimera-run` and the contract
-  tests.
+- Chimera, built with its window by `tools/ci-chimera.sh` (see below), for
+  `chimera-run` and the contract tests.
 - `bison flex python3-mako python3-packaging` - the Mesa builds
   (`waterbox/setup-mesa.sh` uses the system meson only when
   `python3 -c "import mako, packaging"` works).
@@ -58,12 +58,9 @@ rustup default nightly
   (`waterbox/guest/Cargo.lock`, `waterbox/run-native/Cargo.lock`).
 - rustup itself is not installed by the workflow: the runner image has it.
 
-**.NET SDK 8.0.** The workflow uses `actions/setup-dotnet@v4` with
-`dotnet-version: '8.0'`. Chimera's README gives the manual install:
-
-```sh
-curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0
-```
+**Qt 6.12.** Chimera's window needs it. `<chimera>/tools/ci-chimera.sh`
+installs it from Qt's own archives (with aqt) and builds Chimera; the
+workflow keeps Qt in `~/qt` between runs.
 
 **What the scripts fetch or build themselves.**
 
@@ -121,11 +118,7 @@ CI builds Chimera first, because the gate's engine leg and the contract tests
 need it:
 
 ```sh
-cd <chimera>
-meson setup build/meson-linux --prefix "$PWD/build" --libdir dll
-meson compile -C build/meson-linux
-meson install -C build/meson-linux
-dotnet build source/gui/Chimera.sln -c Release /nodeReuse:false -p:UseSharedCompilation=false
+<chimera>/tools/ci-chimera.sh
 ```
 
 Then miniBox, the sandbox host and the guest toolchain:
@@ -327,15 +320,15 @@ the last one. Nothing is published from a pull request.
 
 Chimera ships no cores and downloads nothing: it has no network code. A user
 downloads a core's `.chimeraCore` package from the core repository's Releases
-page, or builds it, and puts it in Chimera's `Cores` folder.
+page, or builds it, and puts it in Chimera's `cores` folder.
 
 - In a Chimera source checkout the cores folder is `<chimera>/build/Cores/`.
   `waterbox/build-package.sh -r <chimera>` writes the package straight there,
   so there is nothing more to do.
-- In a release bundle it is the `Cores` folder beside `Chimera.exe`, or another
-  folder chosen in File > Core Manager > Change folder... Copy
+- In a release bundle it is the `cores` folder beside Chimera's program, or another
+  folder chosen in Tools > Core Manager... > Change folder... Copy
   `touchhle.chimeraCore` into it.
-- File > Core Manager lists what is in that folder. Refresh List rescans it.
+- Tools > Core Manager... lists what is in that folder. Refresh List rescans it.
 
 Published packages are at
 https://github.com/ToolAssisted-run/chimera-core-touchhle/releases.
@@ -400,7 +393,7 @@ declares, and stamp a version.
 
 ```sh
 cd <chimera>
-CHIMERA_CORES_DIR=<chimera>/build/Cores dotnet test source/gui/Chimera.Tests.Client.Common/Chimera.Tests.Client.Common.csproj -c Release --nologo --filter "FullyQualifiedName~InstalledCorePackagesTests|FullyQualifiedName~MnemonicUniquenessTests"
+CHIMERA_CORES_DIR=<chimera>/build/Cores <chimera>/build/meson-linux/source/ui/test-packages
 ```
 
 ## Files the core needs at run time

@@ -40,17 +40,13 @@ Builds run on Linux, and the one package works on Linux and on Windows.
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y --no-install-recommends meson ninja-build build-essential cmake pkg-config python3 bison flex python3-mako python3-packaging clang ffmpeg mono-complete libgl1-mesa-dev libx11-dev libxext-dev libasound2-dev
+sudo apt-get install -y --no-install-recommends meson ninja-build build-essential cmake pkg-config python3 bison flex python3-mako python3-packaging clang ffmpeg libgl1-mesa-dev libx11-dev libxext-dev libasound2-dev
 rustup toolchain install nightly --profile minimal -c rust-src
 rustup default nightly
 git submodule update --init --recursive
 git clone https://github.com/ToolAssisted-run/chimera <chimera>
 git -C <chimera> submodule update --init --recursive
-( cd <chimera>
-  meson setup build/meson-linux --prefix "$PWD/build" --libdir dll
-  meson compile -C build/meson-linux
-  meson install -C build/meson-linux
-  dotnet build source/gui/Chimera.sln -c Release /nodeReuse:false -p:UseSharedCompilation=false )
+<chimera>/tools/ci-chimera.sh
 mb=<minibox>
 [ -f "$mb/build/meson-linux/build.ninja" ] || meson setup "$mb/build/meson-linux" "$mb"
 meson compile -C "$mb/build/meson-linux"
@@ -58,7 +54,8 @@ meson compile -C "$mb/build/meson-linux"
 meson compile -C "$mb/build/meson-cpp"
 ```
 
-Building Chimera (the block in parentheses) needs the .NET SDK 8.0. Only the
+Building Chimera (`tools/ci-chimera.sh`) installs Qt 6.12 from Qt's own
+archives (with aqt) and builds the engine, chimera-run and the window. Only the
 gate's engine leg and the contract tests need Chimera built.
 
 ## Build
@@ -82,9 +79,9 @@ Pass `-m` and `-r`: `build-guest.sh` and `run-gate.sh` stop without `-m` (or
 Chimera ships no cores and downloads nothing: a package is put in its `Cores`
 folder by hand. In a source checkout `build-package.sh -r <chimera>` already
 wrote it there, as `<chimera>/build/Cores/touchhle.chimeraCore`. For a release
-bundle, copy the file into the `Cores` folder beside `Chimera.exe`, or into
-the folder chosen in File > Core Manager > Change folder... File > Core
-Manager lists the folder; Refresh List rescans it.
+bundle, copy the file into the `cores` folder beside Chimera's program, or into
+the folder chosen in Tools > Core Manager... > Change folder... Tools > Core
+Manager... lists the folder; Refresh List rescans it.
 
 A hand-built package is stamped `<commit>+local` (`-dirty` when the tree has
 changes) and is for testing. CI stamps the commit and publishes the `dev` and
@@ -97,7 +94,7 @@ The gate applies the patches and builds what it runs:
 ```sh
 ./waterbox/run-gate.sh -m <minibox> -r <chimera>
 # also, when the package or its declarations changed:
-cd <chimera> && CHIMERA_CORES_DIR=<chimera>/build/Cores dotnet test source/gui/Chimera.Tests.Client.Common/Chimera.Tests.Client.Common.csproj -c Release --nologo --filter "FullyQualifiedName~InstalledCorePackagesTests|FullyQualifiedName~MnemonicUniquenessTests"
+cd <chimera> && CHIMERA_CORES_DIR=<chimera>/build/Cores <chimera>/build/meson-linux/source/ui/test-packages
 ```
 
 `run-gate.sh` builds what is missing (host Mesa, native reference, core,
