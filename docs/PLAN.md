@@ -137,8 +137,7 @@ ends depends only on the machine, never on the host.
     Documents and Library (not Library/Caches), read between frames.
   - Memory domain "App Memory" (patch 0007): the app's whole 4 GiB address
     space, made in Init so it can be published before the machine starts.
-  - Chimera's contract tests (InstalledCorePackagesTests,
-    MnemonicUniquenessTests) pass 8/8 against the package; they caught an
+  - Chimera's contract tests pass 8/8 against the package; they caught an
     rtc_start maximum that overflowed Int32.
   - `run-gate.sh`: 19 legs on TestApp, SoundTest, SaveTest and ClockTest
     (our own apps), plus the engine (chimera-run plays a tap movie on the
