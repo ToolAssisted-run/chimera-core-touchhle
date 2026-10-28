@@ -37,13 +37,13 @@ diff --git a/src/chimera/mod.rs b/src/chimera/mod.rs
 -        .map_err(|e| format!("Application bundle error: {e}"))
 +    let open = || {
 +        crate::fs::BundleData::open_any(std::path::Path::new(path))
-+            .map_err(|e| format!("Could not open app bundle: {e}"))
++            .map_err(|e| format!("error.bundle_not_opened\u{1f}{e}"))
 +    };
 +    crate::bundle::Bundle::new_bundle_and_fs_from_host_path(
 +        open()?,
 +        /* read_only_mode: */ true,
 +    )
-+    .map_err(|e| format!("Application bundle error: {e}"))?;
++    .map_err(|e| format!("error.bundle\u{1f}{e}"))?;
 +    state().bundle = Some(open()?);
 +    Ok(())
 +}

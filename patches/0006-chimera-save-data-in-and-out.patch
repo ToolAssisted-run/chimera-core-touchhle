@@ -38,7 +38,7 @@ diff --git a/src/chimera/mod.rs b/src/chimera/mod.rs
 +                .any(|c| c.is_empty() || c == "." || c == "..");
 +        if !ok {
 +            return Err(format!(
-+                "{path:?} is not a file under the app's Documents or Library folder"
++                "error.save_bad_path\u{1f}{path}"
 +            ));
 +        }
 +    }

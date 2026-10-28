@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "A(z) %1 nem olyan CPU-órajel, amelyet ez a mag elfogad.",
+		"error.bad_device": "A(z) '%1' nem olyan eszközcsalád, amelyet ez a mag ismer.",
+		"error.bad_orientation": "A(z) '%1' nem olyan tájolás, amelyet ez a mag ismer.",
+		"error.bad_rtc": "Az óra kezdete, %1, nem 2001-től kezdődő idő.",
+		"error.bundle": "Az alkalmazás csomagja nem olvasható: %1",
+		"error.bundle_not_opened": "Az alkalmazás csomagját nem lehetett megnyitni: %1",
+		"error.no_file": "Nincs alkalmazás a projektben.",
+		"error.not_ipa": "A(z) '%1' nem .ipa fájl. Ez a mag .ipa-csomagban terjesztett iPhone OS-alkalmazásokat futtat.",
+		"error.not_read": "A(z) %1 nem olvasható: %2",
+		"error.save_bad_path": "A mentett adat egy %1 nevű fájlt tartalmaz, amely nem az alkalmazás Documents vagy Library mappája alatt van.",
+		"error.save_entry": "A mentett adat %1 bejegyzése nem olvasható: %2",
+		"error.save_not_zip": "A mentett adat nem zip: %1",
+		"error.settings_not_json": "A beállítások nem JSON-formátumúak: %1",
+		"error.settings_not_object": "A beállítások nem JSON-objektum.",
+		"setting.cpu_mhz": "CPU órajel (MHz)",
+		"setting.cpu_mhz.about": "Milyen gyorsan fut az eszköz ARM-processzora. Az alkalmazás saját kódja ezen a sebességen használja el az emulált időt. Az első iPhone és az iPhone 3G 412 MHz-en, a 3GS és a harmadik generációs iPod touch 600 MHz-en, az iPad 1000 MHz-en futott. A touchHLE saját rendszerfunkciói nem használnak emulált időt. A gép része.",
+		"setting.device_family": "Eszköz",
+		"setting.device_family.about": "Melyik eszközön fut az alkalmazás. Az Auto az alkalmazás saját választását használja, amely az iPhone, hacsak az alkalmazás csak iPadre nem készült. Mindkettőre készült alkalmazás az itt választott eszközön fut. A gép része, ezért a movie-nak ugyanaz az eszköz kell.",
+		"setting.orientation": "Kezdő tájolás",
+		"setting.orientation.about": "Hogyan van tartva az eszköz, amikor az alkalmazás elindul. Az 'App' a touchHLE-re bízza a döntést. Tudja, hogy sok játékot milyen irányban tartanak, és így indítja őket, az alkalmazás pedig maga is elforgathatja az eszközt. A gép része.",
+		"setting.rtc_start": "Óra bekapcsoláskor",
+		"setting.rtc_start.about": "Az a dátum, amelyet az eszköz órája mutat, amikor az alkalmazás elindul, 1970 óta eltelt másodpercben. Például az 1262304000 2010-01-01, abban az évben, amikor ezek az alkalmazások készültek. Nem lehet 2001-01-01 előtt, amely dátumtól az Apple órái számolnak. Az indítás után az óra az emulált eszközzel fut, soha nem a számítógéppel. A gép része. Egy játék, amely a véletlenszámait az időből veszi, másként játszódik egy másik dátummal.",
+		"slot.game": "Alkalmazás",
+		"slot.game.help": "VISSZAFEJTETT .ipa fájl az iPhone OS 2.x-től az iOS 4.0-ig. Az App Store-ból letöltött alkalmazás titkosított, és nem fut. A touchHLE kompatibilitási adatbázisa (appdb.touchhle.org) felsorolja, mely alkalmazások és verziók működnek.",
+		"slot.savedata": "Mentett adat",
+		"slot.savedata.help": "Amit az alkalmazás már elmentett, ahogyan az Emulator > Export Save Data... írta. Ez az alkalmazás Documents és Library mappáinak egy .zip fájlja. Az alkalmazás indulása előtt visszakerülnek az alkalmazás kezdőmappájába."
+	}
+}

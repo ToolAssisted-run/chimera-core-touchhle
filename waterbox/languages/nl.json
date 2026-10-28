@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 is geen kloksnelheid van de processor die deze core accepteert.",
+		"error.bad_device": "'%1' is geen apparaatfamilie die deze core heeft.",
+		"error.bad_orientation": "'%1' is geen oriëntatie die deze core heeft.",
+		"error.bad_rtc": "De start van de klok, %1, is geen tijd vanaf 2001.",
+		"error.bundle": "Het bundle van de app kan niet worden gelezen: %1",
+		"error.bundle_not_opened": "Het bundle van de app kon niet worden geopend: %1",
+		"error.no_file": "Er staat geen app in het project.",
+		"error.not_ipa": "'%1' is geen .ipa-bestand. Deze core draait iPhone OS-apps die als .ipa zijn verpakt.",
+		"error.not_read": "%1 kon niet worden gelezen: %2",
+		"error.save_bad_path": "De opgeslagen gegevens bevatten %1, dat geen bestand is in de map Documents of Library van de app.",
+		"error.save_entry": "Het item %1 van de opgeslagen gegevens kon niet worden gelezen: %2",
+		"error.save_not_zip": "De opgeslagen gegevens zijn geen zip: %1",
+		"error.settings_not_json": "De instellingen zijn geen JSON: %1",
+		"error.settings_not_object": "De instellingen zijn geen JSON-object.",
+		"setting.cpu_mhz": "Kloksnelheid van de processor (MHz)",
+		"setting.cpu_mhz.about": "Hoe snel de ARM-processor van het apparaat loopt. De eigen code van de app gebruikt geëmuleerde tijd in dit tempo. De eerste iPhone en de iPhone 3G liepen op 412 MHz, de 3GS en de derde iPod touch op 600 MHz, en de iPad op 1000 MHz. De systeemfuncties die touchHLE zelf levert, kosten geen geëmuleerde tijd. Het hoort bij de machine.",
+		"setting.device_family": "Apparaat",
+		"setting.device_family.about": "Op welk apparaat de app draait. Auto gebruikt de eigen keuze van de app, dat is de iPhone, tenzij de app alleen voor de iPad is. Een app die voor beide is gemaakt, draait op het hier gekozen apparaat. Het hoort bij de machine, dus een opname heeft hetzelfde apparaat nodig.",
+		"setting.orientation": "Oriëntatie bij start",
+		"setting.orientation.about": "Hoe het apparaat wordt vastgehouden als de app start. 'App' laat touchHLE beslissen. Het weet hoe veel spellen worden vastgehouden en start ze zo, en een app kan het apparaat ook zelf draaien. Het hoort bij de machine.",
+		"setting.rtc_start": "Klok bij inschakelen",
+		"setting.rtc_start.about": "De datum die de klok van het apparaat toont als de app start, in seconden sinds 1970. 1262304000 is bijvoorbeeld 2010-01-01, in de jaren waarin deze apps zijn gemaakt. Hij kan niet vroeger zijn dan 2001-01-01, de datum waarvanaf de klokken van Apple tellen. Na de start loopt de klok met het geëmuleerde apparaat en nooit met uw computer. Het hoort bij de machine. Een spel dat zijn willekeurige getallen uit de tijd haalt, speelt anders met een andere datum.",
+		"slot.game": "App",
+		"slot.game.help": "Een ONTSLEUTELD .ipa-bestand voor iPhone OS 2.x tot iOS 4.0. Een app die uit de App Store is gedownload, is versleuteld en draait niet. De compatibiliteitsdatabase van touchHLE (appdb.touchhle.org) vermeldt welke apps en versies werken.",
+		"slot.savedata": "Opgeslagen gegevens",
+		"slot.savedata.help": "Wat de app al had opgeslagen, zoals Emulator > Export Save Data... het schreef. Het is een .zip van de mappen Documents en Library van de app. Ze worden teruggezet in de basismap van de app voordat de app start."
+	}
+}

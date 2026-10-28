@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 no es una velocidad de CPU que acepte este núcleo.",
+		"error.bad_device": "'%1' no es una familia de dispositivos que tenga este núcleo.",
+		"error.bad_orientation": "'%1' no es una orientación que tenga este núcleo.",
+		"error.bad_rtc": "El inicio del reloj, %1, no es una hora de 2001 en adelante.",
+		"error.bundle": "No se puede leer el paquete de la app: %1",
+		"error.bundle_not_opened": "No se pudo abrir el paquete de la app: %1",
+		"error.no_file": "No hay ninguna app en el proyecto.",
+		"error.not_ipa": "'%1' no es un archivo .ipa. Este núcleo ejecuta apps de iPhone OS empaquetadas como .ipa.",
+		"error.not_read": "No se pudo leer %1: %2",
+		"error.save_bad_path": "Los datos de guardado contienen %1, que no es un archivo dentro de las carpetas Documents o Library de la app.",
+		"error.save_entry": "No se pudo leer %1 de los datos de guardado: %2",
+		"error.save_not_zip": "Los datos de guardado no son un zip: %1",
+		"error.settings_not_json": "Los ajustes no son JSON: %1",
+		"error.settings_not_object": "Los ajustes no son un objeto JSON.",
+		"setting.cpu_mhz": "Velocidad de CPU (MHz)",
+		"setting.cpu_mhz.about": "Lo rápido que funciona el procesador ARM del dispositivo. El código propio de la app consume tiempo emulado a esta velocidad. El primer iPhone y el iPhone 3G funcionaban a 412 MHz, el 3GS y el tercer iPod touch a 600 MHz, y el iPad a 1000 MHz. Las funciones del sistema que touchHLE proporciona por sí mismo no consumen tiempo emulado. Es parte de la máquina.",
+		"setting.device_family": "Dispositivo",
+		"setting.device_family.about": "En qué dispositivo funciona la app. Automático usa la elección de la propia app, que es el iPhone salvo que la app sea solo para iPad. Una app hecha para ambos funciona en el dispositivo elegido aquí. Es parte de la máquina, así que una película necesita el mismo dispositivo.",
+		"setting.orientation": "Orientación inicial",
+		"setting.orientation.about": "Cómo se sostiene el dispositivo al empezar la app. 'App' deja que touchHLE decida. Sabe en qué sentido se sostienen muchos juegos y los arranca así, y una app también puede girar el dispositivo por sí misma. Es parte de la máquina.",
+		"setting.rtc_start": "Hora al encender",
+		"setting.rtc_start.about": "La fecha que muestra el reloj del dispositivo al empezar la app, en segundos desde 1970. Por ejemplo 1262304000 es 2010-01-01, en los años en que se hicieron estas apps. No puede ser anterior a 2001-01-01, que es la fecha desde la que cuentan los relojes de Apple. Tras el arranque el reloj avanza con el dispositivo emulado y nunca con tu ordenador. Es parte de la máquina. Un juego que toma sus números aleatorios de la hora se comporta de otra manera con otra fecha.",
+		"slot.game": "App",
+		"slot.game.help": "Un archivo .ipa DESCIFRADO para iPhone OS 2.x a iOS 4.0. Una app descargada de la App Store está cifrada y no se ejecuta. La base de datos de compatibilidad de touchHLE (appdb.touchhle.org) indica qué apps y versiones funcionan.",
+		"slot.savedata": "Datos de guardado",
+		"slot.savedata.help": "Lo que la app ya guardó, tal como lo escribió Emulador > Exportar datos de guardado... Es un .zip de las carpetas Documents y Library de la app. Se vuelven a poner en la carpeta personal de la app antes de que empiece."
+	}
+}

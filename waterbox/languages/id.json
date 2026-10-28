@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 bukan clock CPU yang diterima core ini.",
+		"error.bad_device": "'%1' bukan keluarga perangkat yang dimiliki core ini.",
+		"error.bad_orientation": "'%1' bukan orientasi yang dimiliki core ini.",
+		"error.bad_rtc": "Awal jam, %1, bukan waktu dari 2001 ke atas.",
+		"error.bundle": "Bundle aplikasi tidak dapat dibaca: %1",
+		"error.bundle_not_opened": "Bundle aplikasi tidak dapat dibuka: %1",
+		"error.no_file": "Tidak ada aplikasi di dalam proyek.",
+		"error.not_ipa": "'%1' bukan berkas .ipa. Core ini menjalankan aplikasi iPhone OS yang dikemas sebagai .ipa.",
+		"error.not_read": "%1 tidak dapat dibaca: %2",
+		"error.save_bad_path": "Data simpanan memuat %1, yang bukan berkas di bawah folder Documents atau Library aplikasi.",
+		"error.save_entry": "%1 pada data simpanan tidak dapat dibaca: %2",
+		"error.save_not_zip": "Data simpanan bukan zip: %1",
+		"error.settings_not_json": "Pengaturan bukan JSON: %1",
+		"error.settings_not_object": "Pengaturan bukan objek JSON.",
+		"setting.cpu_mhz": "Clock CPU (MHz)",
+		"setting.cpu_mhz.about": "Seberapa cepat prosesor ARM perangkat berjalan. Kode aplikasi itu sendiri memakai waktu emulasi dengan kecepatan ini. iPhone pertama dan iPhone 3G berjalan pada 412 MHz, 3GS dan iPod touch generasi ketiga pada 600 MHz, dan iPad pada 1000 MHz. Fungsi sistem yang disediakan touchHLE sendiri tidak memakai waktu emulasi. Ini bagian dari mesin.",
+		"setting.device_family": "Perangkat",
+		"setting.device_family.about": "Perangkat mana tempat aplikasi berjalan. Auto memakai pilihan aplikasi itu sendiri, yaitu iPhone kecuali aplikasi hanya untuk iPad. Aplikasi yang dibuat untuk keduanya berjalan pada perangkat yang dipilih di sini. Ini bagian dari mesin, jadi movie membutuhkan perangkat yang sama.",
+		"setting.orientation": "Orientasi Awal",
+		"setting.orientation.about": "Bagaimana perangkat dipegang saat aplikasi dimulai. 'App' membiarkan touchHLE memutuskan. Ia mengetahui ke arah mana banyak game dipegang dan memulainya dengan cara itu, dan aplikasi juga bisa memutar perangkatnya sendiri. Ini bagian dari mesin.",
+		"setting.rtc_start": "Jam Saat Dinyalakan",
+		"setting.rtc_start.about": "Tanggal yang ditampilkan jam perangkat saat aplikasi dimulai, dalam detik sejak 1970. Misalnya 1262304000 adalah 2010-01-01, pada tahun-tahun saat aplikasi ini dibuat. Tidak bisa lebih awal dari 2001-01-01, yaitu tanggal yang dihitung jam Apple. Setelah dimulai, jam berjalan bersama perangkat yang diemulasi dan tidak pernah bersama komputer Anda. Ini bagian dari mesin. Game yang mengambil angka acaknya dari waktu akan berjalan berbeda dengan tanggal lain.",
+		"slot.game": "Aplikasi",
+		"slot.game.help": "Berkas .ipa yang sudah DIDEKRIPSI untuk iPhone OS 2.x sampai iOS 4.0. Aplikasi yang diunduh dari App Store terenkripsi dan tidak berjalan. Basis data kompatibilitas touchHLE (appdb.touchhle.org) mencantumkan aplikasi dan versi mana yang berfungsi.",
+		"slot.savedata": "Data simpanan",
+		"slot.savedata.help": "Apa yang sudah disimpan aplikasi, seperti yang ditulis Emulator > Export Save Data... Ini adalah .zip dari folder Documents dan Library aplikasi. Keduanya dikembalikan ke folder home aplikasi sebelum aplikasi dimulai."
+	}
+}

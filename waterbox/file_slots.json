@@ -3,19 +3,19 @@
   "slots": [
     {
       "id": "game",
-      "title": "App",
+      "title": "slot.game",
       "min": 1,
       "max": 1,
       "formats": ["ipa"],
-      "help": "A DECRYPTED .ipa file for iPhone OS 2.x to iOS 4.0. An app downloaded from the App Store is encrypted and does not run. touchHLE's compatibility database (appdb.touchhle.org) lists which apps and versions work."
+      "help": "slot.game.help"
     },
     {
       "id": "savedata",
-      "title": "Save data",
+      "title": "slot.savedata",
       "min": 0,
       "max": 1,
       "formats": ["zip"],
-      "help": "What the app already saved, as Emulator > Export Save Data... wrote it. It is a .zip of the app's Documents and Library folders. They are put back into the app's home folder before the app starts."
+      "help": "slot.savedata.help"
     }
   ]
 }

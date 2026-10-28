@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 není takt CPU, který toto jádro přijímá.",
+		"error.bad_device": "'%1' není rodina zařízení, kterou toto jádro má.",
+		"error.bad_orientation": "'%1' není orientace, kterou toto jádro má.",
+		"error.bad_rtc": "Začátek hodin, %1, není čas od roku 2001 dál.",
+		"error.bundle": "Balíček aplikace nelze přečíst: %1",
+		"error.bundle_not_opened": "Balíček aplikace nelze otevřít: %1",
+		"error.no_file": "V projektu není žádná aplikace.",
+		"error.not_ipa": "'%1' není soubor .ipa. Toto jádro spouští aplikace iPhone OS zabalené jako .ipa.",
+		"error.not_read": "%1 nelze přečíst: %2",
+		"error.save_bad_path": "Uložená data obsahují %1, což není soubor ve složce Documents nebo Library aplikace.",
+		"error.save_entry": "Položku %1 uložených dat nelze přečíst: %2",
+		"error.save_not_zip": "Uložená data nejsou zip: %1",
+		"error.settings_not_json": "Nastavení nejsou JSON: %1",
+		"error.settings_not_object": "Nastavení nejsou objekt JSON.",
+		"setting.cpu_mhz": "Takt CPU (MHz)",
+		"setting.cpu_mhz.about": "Jak rychle běží procesor ARM zařízení. Vlastní kód aplikace spotřebovává emulovaný čas touto rychlostí. První iPhone a iPhone 3G běžely na 412 MHz, 3GS a třetí iPod touch na 600 MHz a iPad na 1000 MHz. Systémové funkce, které touchHLE poskytuje sám, emulovaný čas nespotřebují. Je součástí stroje.",
+		"setting.device_family": "Zařízení",
+		"setting.device_family.about": "Na kterém zařízení aplikace běží. 'Auto' použije volbu samotné aplikace, což je iPhone, pokud aplikace není jen pro iPad. Aplikace pro obě běží na zde zvoleném zařízení. Je součástí stroje, takže záznam potřebuje stejné zařízení.",
+		"setting.orientation": "Počáteční orientace",
+		"setting.orientation.about": "Jak je zařízení drženo při startu aplikace. 'App' nechá rozhodnutí na touchHLE. Jádro zná, jak se mnoho her drží, a spustí je tak, a aplikace může zařízení otočit i sama. Je součástí stroje.",
+		"setting.rtc_start": "Čas hodin při zapnutí",
+		"setting.rtc_start.about": "Datum, které ukazují hodiny zařízení při startu aplikace, v sekundách od roku 1970. Například 1262304000 je 2010-01-01, v letech, kdy tyto aplikace vznikaly. Nemůže být dřívější než 2001-01-01, což je datum, od kterého počítají hodiny Applu. Po startu hodiny běží s emulovaným zařízením a nikdy s vaším počítačem. Je součástí stroje. Hra, která bere náhodná čísla z času, se s jiným datem chová jinak.",
+		"slot.game": "Aplikace",
+		"slot.game.help": "DEŠIFROVANÝ soubor .ipa pro iPhone OS 2.x až iOS 4.0. Aplikace stažená z App Store je šifrovaná a neběží. Databáze kompatibility touchHLE (appdb.touchhle.org) uvádí, které aplikace a verze fungují.",
+		"slot.savedata": "Uložená data",
+		"slot.savedata.help": "Co aplikace už uložila, jak to zapsal Emulátor > Exportovat uložená data... Je to .zip složek Documents a Library aplikace. Před startem aplikace se vrátí do její domovské složky."
+	}
+}

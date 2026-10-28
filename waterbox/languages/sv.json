@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 är inte en processorklocka som den här kärnan tar.",
+		"error.bad_device": "'%1' är inte en enhetsfamilj som den här kärnan har.",
+		"error.bad_orientation": "'%1' är inte en orientering som den här kärnan har.",
+		"error.bad_rtc": "Klockans start, %1, är inte en tid från 2001 och framåt.",
+		"error.bundle": "Appens paket kan inte läsas: %1",
+		"error.bundle_not_opened": "Appens paket kunde inte öppnas: %1",
+		"error.no_file": "Ingen app finns i projektet.",
+		"error.not_ipa": "'%1' är inte en .ipa-fil. Den här kärnan kör iPhone OS-appar paketerade som .ipa.",
+		"error.not_read": "%1 kunde inte läsas: %2",
+		"error.save_bad_path": "Den sparade datan innehåller %1, som inte är en fil under appens mapp Documents eller Library.",
+		"error.save_entry": "Den sparade datans %1 kunde inte läsas: %2",
+		"error.save_not_zip": "Den sparade datan är inte en zip-fil: %1",
+		"error.settings_not_json": "Inställningarna är inte JSON: %1",
+		"error.settings_not_object": "Inställningarna är inte ett JSON-objekt.",
+		"setting.cpu_mhz": "CPU-klocka (MHz)",
+		"setting.cpu_mhz.about": "Hur snabbt enhetens ARM-processor går. Appens egen kod förbrukar emulerad tid i den här hastigheten. Den första iPhone och iPhone 3G gick på 412 MHz, 3GS och den tredje iPod touch på 600 MHz, och iPad på 1000 MHz. Systemfunktionerna som touchHLE själv tillhandahåller tar ingen emulerad tid. Den är en del av maskinen.",
+		"setting.device_family": "Enhet",
+		"setting.device_family.about": "Vilken enhet appen körs på. Auto använder appens eget val, vilket är iPhone om inte appen bara är för iPad. En app gjord för båda körs på den enhet som väljs här. Den är en del av maskinen, så en film behöver samma enhet.",
+		"setting.orientation": "Startorientering",
+		"setting.orientation.about": "Hur enheten hålls när appen startar. 'App' låter touchHLE avgöra. Den vet hur många spel hålls och startar dem så, och en app kan också vrida enheten själv. Den är en del av maskinen.",
+		"setting.rtc_start": "Klocka vid start",
+		"setting.rtc_start.about": "Datumet som enhetens klocka visar när appen startar, i sekunder sedan 1970. Till exempel är 1262304000 2010-01-01, under de år då dessa appar gjordes. Det kan inte vara tidigare än 2001-01-01, som är det datum Apples klockor räknar från. Efter starten går klockan med den emulerade enheten och aldrig med din dator. Den är en del av maskinen. Ett spel som väljer sina slumptal utifrån tiden spelar annorlunda med ett annat datum.",
+		"slot.game": "App",
+		"slot.game.help": "En DEKRYPTERAD .ipa-fil för iPhone OS 2.x till iOS 4.0. En app som hämtats från App Store är krypterad och körs inte. touchHLE:s kompatibilitetsdatabas (appdb.touchhle.org) listar vilka appar och versioner som fungerar.",
+		"slot.savedata": "Sparad data",
+		"slot.savedata.help": "Det appen redan sparat, så som Emulator > Exportera sparad data... skrev det. Det är en .zip av appens mappar Documents och Library. De läggs tillbaka i appens hemmapp innan appen startar."
+	}
+}

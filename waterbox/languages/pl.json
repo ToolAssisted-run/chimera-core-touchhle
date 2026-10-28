@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 nie jest zegarem CPU, jaki przyjmuje ten rdzeń.",
+		"error.bad_device": "„%1” nie jest rodziną urządzeń, jaką ma ten rdzeń.",
+		"error.bad_orientation": "„%1” nie jest orientacją, jaką ma ten rdzeń.",
+		"error.bad_rtc": "Początek zegara, %1, nie jest czasem od 2001 roku w górę.",
+		"error.bundle": "Nie można odczytać pakietu aplikacji: %1",
+		"error.bundle_not_opened": "Nie można otworzyć pakietu aplikacji: %1",
+		"error.no_file": "W projekcie nie ma aplikacji.",
+		"error.not_ipa": "„%1” nie jest plikiem .ipa. Ten rdzeń uruchamia aplikacje iPhone OS spakowane jako .ipa.",
+		"error.not_read": "Nie można odczytać %1: %2",
+		"error.save_bad_path": "Zapis gry zawiera %1, który nie jest plikiem w folderze Documents ani Library aplikacji.",
+		"error.save_entry": "Nie można odczytać %1 zapisu gry: %2",
+		"error.save_not_zip": "Zapis gry nie jest zipem: %1",
+		"error.settings_not_json": "Ustawienia nie są w JSON: %1",
+		"error.settings_not_object": "Ustawienia nie są obiektem JSON.",
+		"setting.cpu_mhz": "Zegar CPU (MHz)",
+		"setting.cpu_mhz.about": "Jak szybko działa procesor ARM urządzenia. Kod własny aplikacji zużywa emulowany czas w tym tempie. Pierwszy iPhone i iPhone 3G działały na 412 MHz, 3GS i trzeci iPod touch na 600 MHz, a iPad na 1000 MHz. Funkcje systemowe, które dostarcza sam touchHLE, nie zabierają emulowanego czasu. To część maszyny.",
+		"setting.device_family": "Urządzenie",
+		"setting.device_family.about": "Na jakim urządzeniu działa aplikacja. Auto bierze wybór samej aplikacji, czyli iPhone, chyba że aplikacja jest tylko dla iPada. Aplikacja zrobiona na oba działa na urządzeniu wybranym tutaj. To część maszyny, więc nagranie potrzebuje tego samego urządzenia.",
+		"setting.orientation": "Orientacja na starcie",
+		"setting.orientation.about": "Jak trzymane jest urządzenie, gdy aplikacja startuje. „App” zostawia wybór touchHLE. Zna on sposób trzymania wielu gier i uruchamia je tak, a aplikacja może też sama obrócić urządzenie. To część maszyny.",
+		"setting.rtc_start": "Zegar przy włączeniu",
+		"setting.rtc_start.about": "Data, jaką pokazuje zegar urządzenia po starcie aplikacji, w sekundach od 1970. Na przykład 1262304000 to 2010-01-01, z lat, w których powstawały te aplikacje. Nie może być wcześniejsza niż 2001-01-01, czyli data, od której liczą zegary Apple. Po starcie zegar biegnie z emulowanym urządzeniem, nigdy z twoim komputerem. To część maszyny. Gra, która bierze liczby losowe z czasu, zachowuje się inaczej przy innej dacie.",
+		"slot.game": "Aplikacja",
+		"slot.game.help": "ODSZYFROWANY plik .ipa dla iPhone OS 2.x do iOS 4.0. Aplikacja pobrana z App Store jest zaszyfrowana i nie działa. Baza zgodności touchHLE (appdb.touchhle.org) podaje, które aplikacje i wersje działają.",
+		"slot.savedata": "Zapis gry",
+		"slot.savedata.help": "To, co aplikacja już zapisała, tak jak zapisał to Emulator > Eksportuj zapis gry... Jest to plik .zip folderów Documents i Library aplikacji. Zostają wstawione z powrotem do folderu domowego aplikacji, zanim aplikacja wystartuje."
+	}
+}

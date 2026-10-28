@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 nu este un ceas de procesor pe care îl acceptă acest nucleu.",
+		"error.bad_device": "'%1' nu este o familie de dispozitive pe care o are acest nucleu.",
+		"error.bad_orientation": "'%1' nu este o orientare pe care o are acest nucleu.",
+		"error.bad_rtc": "Începutul ceasului, %1, nu este un timp din 2001 încoace.",
+		"error.bundle": "Pachetul aplicației nu poate fi citit: %1",
+		"error.bundle_not_opened": "Pachetul aplicației nu a putut fi deschis: %1",
+		"error.no_file": "Nicio aplicație nu se află în proiect.",
+		"error.not_ipa": "'%1' nu este un fișier .ipa. Acest nucleu rulează aplicații iPhone OS împachetate ca .ipa.",
+		"error.not_read": "%1 nu a putut fi citit: %2",
+		"error.save_bad_path": "Datele salvate conțin %1, care nu este un fișier din dosarul Documents sau Library al aplicației.",
+		"error.save_entry": "%1 din datele salvate nu a putut fi citit: %2",
+		"error.save_not_zip": "Datele salvate nu sunt un zip: %1",
+		"error.settings_not_json": "Setările nu sunt JSON: %1",
+		"error.settings_not_object": "Setările nu sunt un obiect JSON.",
+		"setting.cpu_mhz": "Ceas CPU (MHz)",
+		"setting.cpu_mhz.about": "Cât de rapid rulează procesorul ARM al dispozitivului. Codul aplicației consumă timp emulat cu această viteză. Primul iPhone și iPhone 3G au rulat la 412 MHz, 3GS și al treilea iPod touch la 600 MHz, iar iPad la 1000 MHz. Funcțiile de sistem pe care le oferă touchHLE singur nu consumă timp emulat. Face parte din aparat.",
+		"setting.device_family": "Dispozitiv",
+		"setting.device_family.about": "Pe ce dispozitiv rulează aplicația. 'Auto' folosește alegerea aplicației, care este iPhone-ul, decât dacă aplicația este doar pentru iPad. O aplicație făcută pentru ambele rulează pe dispozitivul ales aici. Face parte din aparat, deci o înregistrare are nevoie de același dispozitiv.",
+		"setting.orientation": "Orientarea de pornire",
+		"setting.orientation.about": "Cum este ținut dispozitivul când pornește aplicația. 'App' lasă decizia lui touchHLE. El știe în ce fel sunt ținute multe jocuri și le pornește așa, iar o aplicație poate să întoarcă singură dispozitivul. Face parte din aparat.",
+		"setting.rtc_start": "Ceasul de la pornire",
+		"setting.rtc_start.about": "Data pe care o arată ceasul dispozitivului când pornește aplicația, în secunde de la 1970. De exemplu 1262304000 este 2010-01-01, în anii în care au fost făcute aceste aplicații. Nu poate fi mai devreme de 2001-01-01, data de la care numără ceasurile Apple. După pornire ceasul rulează cu dispozitivul emulat și niciodată cu calculatorul dumneavoastră. Face parte din aparat. Un joc care își alege numerele aleatoare după timp se comportă altfel cu o altă dată.",
+		"slot.game": "Aplicație",
+		"slot.game.help": "Un fișier .ipa DECRIPTAT, pentru iPhone OS 2.x până la iOS 4.0. O aplicație descărcată din App Store este criptată și nu rulează. Baza de compatibilitate a touchHLE (appdb.touchhle.org) arată ce aplicații și ce versiuni funcționează.",
+		"slot.savedata": "Datele salvate",
+		"slot.savedata.help": "Ce a salvat deja aplicația, așa cum le-a scris Emulator > Export Save Data.... Este un .zip cu dosarele Documents și Library ale aplicației. Sunt puse înapoi în dosarul de acasă al aplicației înainte să pornească ea."
+	}
+}

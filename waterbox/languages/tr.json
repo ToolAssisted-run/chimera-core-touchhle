@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1, bu çekirdeğin kabul ettiği bir CPU saati değil.",
+		"error.bad_device": "'%1', bu çekirdeğin sahip olduğu bir aygıt ailesi değil.",
+		"error.bad_orientation": "'%1', bu çekirdeğin sahip olduğu bir yön değil.",
+		"error.bad_rtc": "Saatin başlangıcı, %1, 2001'den sonraki bir zaman değil.",
+		"error.bundle": "Uygulamanın paketi okunamıyor: %1",
+		"error.bundle_not_opened": "Uygulamanın paketi açılamadı: %1",
+		"error.no_file": "Projede uygulama yok.",
+		"error.not_ipa": "'%1' bir .ipa dosyası değil. Bu çekirdek, .ipa olarak paketlenmiş iPhone OS uygulamalarını çalıştırır.",
+		"error.not_read": "%1 okunamadı: %2",
+		"error.save_bad_path": "Kayıt verisi %1 tutuyor; bu, uygulamanın Documents ya da Library klasöründeki bir dosya değil.",
+		"error.save_entry": "Kayıt verisinin %1 öğesi okunamadı: %2",
+		"error.save_not_zip": "Kayıt verisi bir zip değil: %1",
+		"error.settings_not_json": "Ayarlar JSON değil: %1",
+		"error.settings_not_object": "Ayarlar bir JSON nesnesi değil.",
+		"setting.cpu_mhz": "CPU saati (MHz)",
+		"setting.cpu_mhz.about": "Aygıtın ARM işlemcisinin ne kadar hızlı çalıştığı. Uygulamanın kendi kodu, bu hızda öykülenen zamanı harcar. İlk iPhone ve iPhone 3G 412 MHz'de, 3GS ve üçüncü nesil iPod touch 600 MHz'de, iPad ise 1000 MHz'de çalıştı. touchHLE'nin kendi sağladığı sistem işlevleri öykülenen zamanı harcamaz. Makinenin bir parçasıdır.",
+		"setting.device_family": "Aygıt",
+		"setting.device_family.about": "Uygulamanın hangi aygıtta çalıştığı. Auto, uygulamanın kendi seçimini kullanır; bu, uygulama yalnızca iPad için değilse iPhone'dur. Hem iPhone hem iPad için yapılmış bir uygulama, burada seçilen aygıtta çalışır. Makinenin bir parçasıdır, bu yüzden bir kaydın aynı aygıta ihtiyacı vardır.",
+		"setting.orientation": "Başlangıç yönü",
+		"setting.orientation.about": "Uygulama başladığında aygıtın nasıl tutulduğu. 'App', touchHLE'nin karar vermesine izin verir. Birçok oyunun hangi yöne tutulduğunu bilir ve onları o yönde başlatır; bir uygulama da aygıtı kendisi çevirebilir. Makinenin bir parçasıdır.",
+		"setting.rtc_start": "Açılışta saat",
+		"setting.rtc_start.about": "Uygulama başladığında aygıtın saatinin gösterdiği tarih, 1970'ten bu yana saniye cinsinden. Örneğin 1262304000, bu uygulamaların yapıldığı yıllarda 2010-01-01'dir. 2001-01-01'den önce olamaz; Apple'ın saatlerinin saymaya başladığı tarih budur. Başladıktan sonra saat, öykülenen aygıtla birlikte işler ve asla bilgisayarınızla değil. Makinenin bir parçasıdır. Rastgele sayılarını zamandan alan bir oyun, başka bir tarihle farklı oynar.",
+		"slot.game": "Uygulama",
+		"slot.game.help": "iPhone OS 2.x'ten iOS 4.0'a kadar ŞİFRESİ ÇÖZÜLMÜŞ bir .ipa dosyası. App Store'dan indirilen bir uygulama şifrelidir ve çalışmaz. touchHLE'nin uyumluluk veritabanı (appdb.touchhle.org), hangi uygulamaların ve sürümlerin çalıştığını listeler.",
+		"slot.savedata": "Kayıt verisi",
+		"slot.savedata.help": "Uygulamanın zaten kaydettiği şey, Emulator > Export Save Data... menüsünün yazdığı biçimde. Uygulamanın Documents ve Library klasörlerinin bir .zip dosyasıdır. Uygulama başlamadan önce uygulamanın ana klasörüne geri konurlar."
+	}
+}

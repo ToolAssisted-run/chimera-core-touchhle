@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 不是本核心接受的 CPU 時脈。",
+		"error.bad_device": "「%1」不是本核心所具有的裝置系列。",
+		"error.bad_orientation": "「%1」不是本核心所具有的方向。",
+		"error.bad_rtc": "時鐘的起始時間 %1 不是 2001 年以後的時間。",
+		"error.bundle": "無法讀取應用程式的套件：%1",
+		"error.bundle_not_opened": "無法開啟應用程式的套件：%1",
+		"error.no_file": "專案中沒有應用程式。",
+		"error.not_ipa": "「%1」不是 .ipa 檔。本核心執行的是以 .ipa 封裝的 iPhone OS 應用程式。",
+		"error.not_read": "無法讀取 %1：%2",
+		"error.save_bad_path": "存檔資料中有 %1，它不是應用程式 Documents 或 Library 資料夾下的檔案。",
+		"error.save_entry": "無法讀取存檔資料的 %1：%2",
+		"error.save_not_zip": "存檔資料不是 zip：%1",
+		"error.settings_not_json": "設定不是 JSON：%1",
+		"error.settings_not_object": "設定不是 JSON 物件。",
+		"setting.cpu_mhz": "CPU 時脈（MHz）",
+		"setting.cpu_mhz.about": "裝置的 ARM 處理器執行的速度。應用程式自己的程式會以此速度消耗模擬時間。第一代 iPhone 與 iPhone 3G 以 412 MHz 執行，3GS 與第三代 iPod touch 以 600 MHz 執行，iPad 以 1000 MHz 執行。touchHLE 自行提供的系統功能不消耗模擬時間。它是機器的一部分。",
+		"setting.device_family": "裝置",
+		"setting.device_family.about": "應用程式在哪一種裝置上執行。「Auto」使用應用程式自己的選擇，即 iPhone，除非應用程式只適用於 iPad。同時為兩者製作的應用程式，會在此處選擇的裝置上執行。它是機器的一部分，因此影片需要相同的裝置。",
+		"setting.orientation": "起始方向",
+		"setting.orientation.about": "應用程式啟動時裝置如何握持。「App」由 touchHLE 決定。它知道許多遊戲以哪個方向握持，並以該方向啟動，應用程式也可以自己轉動裝置。它是機器的一部分。",
+		"setting.rtc_start": "開機時的時鐘",
+		"setting.rtc_start.about": "應用程式啟動時裝置時鐘顯示的日期，以自 1970 年起的秒數表示。例如 1262304000 是 2010-01-01，即這些應用程式製作的年代。它不能早於 2001-01-01，那是 Apple 時鐘起算的日期。啟動之後，時鐘隨模擬的裝置運行，從不隨你的電腦運行。它是機器的一部分。依時間取得亂數的遊戲，若日期不同，表現也會不同。",
+		"slot.game": "應用程式",
+		"slot.game.help": "已解密的 .ipa 檔，適用於 iPhone OS 2.x 至 iOS 4.0。從 App Store 下載的應用程式是加密的，無法執行。touchHLE 的相容性資料庫（appdb.touchhle.org）列出哪些應用程式與版本可以運作。",
+		"slot.savedata": "存檔資料",
+		"slot.savedata.help": "應用程式已儲存的內容，即「模擬器 > 匯出存檔資料...」所寫出的格式。它是應用程式 Documents 與 Library 資料夾的 .zip。它們會在應用程式啟動前放回應用程式的主資料夾中。"
+	}
+}

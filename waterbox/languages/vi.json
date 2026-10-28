@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 không phải tốc độ CPU mà core này nhận.",
+		"error.bad_device": "'%1' không phải họ thiết bị mà core này có.",
+		"error.bad_orientation": "'%1' không phải hướng màn hình mà core này có.",
+		"error.bad_rtc": "Thời điểm bắt đầu của đồng hồ, %1, không phải thời gian từ năm 2001 trở đi.",
+		"error.bundle": "Không đọc được bundle của ứng dụng: %1",
+		"error.bundle_not_opened": "Không mở được bundle của ứng dụng: %1",
+		"error.no_file": "Không có ứng dụng nào trong dự án.",
+		"error.not_ipa": "'%1' không phải tệp .ipa. Core này chạy ứng dụng iPhone OS được đóng gói dạng .ipa.",
+		"error.not_read": "Không đọc được %1: %2",
+		"error.save_bad_path": "Dữ liệu lưu chứa %1, không phải tệp nằm trong thư mục Documents hoặc Library của ứng dụng.",
+		"error.save_entry": "Không đọc được %1 của dữ liệu lưu: %2",
+		"error.save_not_zip": "Dữ liệu lưu không phải zip: %1",
+		"error.settings_not_json": "Cài đặt không phải JSON: %1",
+		"error.settings_not_object": "Cài đặt không phải một đối tượng JSON.",
+		"setting.cpu_mhz": "Tốc độ CPU (MHz)",
+		"setting.cpu_mhz.about": "Bộ xử lý ARM của thiết bị chạy nhanh đến đâu. Mã của ứng dụng tiêu thời gian mô phỏng với tốc độ này. iPhone đầu tiên và iPhone 3G chạy 412 MHz, 3GS và iPod touch thế hệ thứ ba chạy 600 MHz, còn iPad chạy 1000 MHz. Các hàm hệ thống mà touchHLE tự cung cấp không tốn thời gian mô phỏng. Nó là một phần của máy.",
+		"setting.device_family": "Thiết bị",
+		"setting.device_family.about": "Ứng dụng chạy trên thiết bị nào. Auto dùng lựa chọn của chính ứng dụng, tức là iPhone trừ khi ứng dụng chỉ dành cho iPad. Ứng dụng làm cho cả hai chạy trên thiết bị được chọn ở đây. Nó là một phần của máy, nên movie cần cùng thiết bị.",
+		"setting.orientation": "Hướng khi bắt đầu",
+		"setting.orientation.about": "Thiết bị được cầm theo hướng nào khi ứng dụng khởi động. 'App' để touchHLE quyết định. Nó biết nhiều game được cầm theo hướng nào và khởi động chúng theo hướng đó, và một ứng dụng cũng có thể tự xoay thiết bị. Nó là một phần của máy.",
+		"setting.rtc_start": "Đồng hồ khi bật máy",
+		"setting.rtc_start.about": "Ngày mà đồng hồ thiết bị hiển thị khi ứng dụng khởi động, tính bằng giây từ 1970. Ví dụ 1262304000 là 2010-01-01, trong những năm các ứng dụng này được làm ra. Nó không thể sớm hơn 2001-01-01, là ngày mà đồng hồ của Apple đếm từ đó. Sau khi khởi động, đồng hồ chạy cùng thiết bị được mô phỏng và không bao giờ cùng máy tính của bạn. Nó là một phần của máy. Một game lấy số ngẫu nhiên từ thời gian sẽ chơi khác đi với ngày khác.",
+		"slot.game": "Ứng dụng",
+		"slot.game.help": "Một tệp .ipa ĐÃ GIẢI MÃ cho iPhone OS 2.x đến iOS 4.0. Ứng dụng tải từ App Store được mã hóa và không chạy. Cơ sở dữ liệu tương thích của touchHLE (appdb.touchhle.org) liệt kê ứng dụng và phiên bản nào chạy được.",
+		"slot.savedata": "Dữ liệu lưu",
+		"slot.savedata.help": "Những gì ứng dụng đã lưu, như Emulator > Export Save Data... đã ghi. Đó là tệp .zip của các thư mục Documents và Library của ứng dụng. Chúng được đặt lại vào thư mục nhà của ứng dụng trước khi ứng dụng bắt đầu."
+	}
+}

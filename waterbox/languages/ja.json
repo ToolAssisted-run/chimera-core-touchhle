@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 は、このコアが受け付ける CPU クロックではありません。",
+		"error.bad_device": "'%1' は、このコアが持つデバイスの系統ではありません。",
+		"error.bad_orientation": "'%1' は、このコアが持つ向きではありません。",
+		"error.bad_rtc": "時計の開始時刻 %1 は、2001年以降の時刻ではありません。",
+		"error.bundle": "アプリのバンドルを読めません: %1",
+		"error.bundle_not_opened": "アプリのバンドルを開けませんでした: %1",
+		"error.no_file": "プロジェクトにアプリがありません。",
+		"error.not_ipa": "'%1' は .ipa ファイルではありません。このコアが動かすのは、.ipa としてパッケージされた iPhone OS のアプリです。",
+		"error.not_read": "%1 を読めませんでした: %2",
+		"error.save_bad_path": "セーブデータには %1 が入っていますが、これはアプリの Documents フォルダーまたは Library フォルダーの下にあるファイルではありません。",
+		"error.save_entry": "セーブデータの %1 を読めませんでした: %2",
+		"error.save_not_zip": "セーブデータは zip ではありません: %1",
+		"error.settings_not_json": "設定は JSON ではありません: %1",
+		"error.settings_not_object": "設定は JSON のオブジェクトではありません。",
+		"setting.cpu_mhz": "CPU クロック（MHz）",
+		"setting.cpu_mhz.about": "デバイスの ARM プロセッサーの速さです。アプリ自身のコードは、この速さでエミュレートされた時間を使います。初代 iPhone と iPhone 3G は 412MHz、3GS と第3世代 iPod touch は 600MHz、iPad は 1000MHz で動いていました。touchHLE が自ら提供するシステム機能は、エミュレートされた時間を使いません。機械の一部です。",
+		"setting.device_family": "デバイス",
+		"setting.device_family.about": "アプリを動かすデバイスです。「自動」はアプリ自身の選択を使います。アプリが iPad 専用でない限り iPhone です。iPhone と iPad の両方向けのアプリは、ここで選んだデバイス上で動きます。機械の一部なので、ムービーには同じデバイスが必要です。",
+		"setting.orientation": "開始時の向き",
+		"setting.orientation.about": "アプリの起動時に、デバイスをどの向きで持つかです。「アプリ」は touchHLE に決めさせます。touchHLE は多くのゲームの持ち方を知っており、その向きで起動します。アプリ自身がデバイスの向きを変えることもできます。機械の一部です。",
+		"setting.rtc_start": "電源投入時の時計",
+		"setting.rtc_start.about": "アプリの起動時にデバイスの時計が示す日付です。1970年からの秒数で指定します。たとえば 1262304000 は 2010-01-01 で、これらのアプリが作られた時代です。Apple の時計が数える起点の 2001-01-01 より前にはできません。起動後、時計はエミュレートされたデバイスとともに進み、コンピューターの時計とは決して同じになりません。機械の一部です。時刻から乱数を取るゲームは、別の日付では違う動きをします。",
+		"slot.game": "アプリ",
+		"slot.game.help": "iPhone OS 2.x から iOS 4.0 までの、復号済みの .ipa ファイルです。App Store からダウンロードしたアプリは暗号化されており、動きません。touchHLE の互換性データベース（appdb.touchhle.org）に、どのアプリとどのバージョンが動くかが載っています。",
+		"slot.savedata": "セーブデータ",
+		"slot.savedata.help": "アプリがすでに保存したデータです。「エミュレーター > セーブデータのエクスポート...」で書き出したものです。アプリの Documents フォルダーと Library フォルダーを収めた .zip です。アプリの起動前に、アプリのホームフォルダーへ戻されます。"
+	}
+}

@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 ei ole suorittimen kellotaajuus, jonka tämä ydin hyväksyy.",
+		"error.bad_device": "'%1' ei ole laiteperhe, jonka tällä ytimellä on.",
+		"error.bad_orientation": "'%1' ei ole suunta, jonka tällä ytimellä on.",
+		"error.bad_rtc": "Kellon alkamisaika %1 ei ole aika vuodesta 2001 eteenpäin.",
+		"error.bundle": "Sovelluksen pakettia ei voi lukea: %1",
+		"error.bundle_not_opened": "Sovelluksen pakettia ei voitu avata: %1",
+		"error.no_file": "Projektissa ei ole sovellusta.",
+		"error.not_ipa": "'%1' ei ole .ipa-tiedosto. Tämä ydin ajaa iPhone OS -sovelluksia, jotka on paketoitu .ipa-tiedostoiksi.",
+		"error.not_read": "%1:tä ei voitu lukea: %2",
+		"error.save_bad_path": "Tallennetut tiedot sisältävät %1:n, joka ei ole tiedosto sovelluksen Documents- tai Library-kansiossa.",
+		"error.save_entry": "Tallennetun tiedon kohtaa %1 ei voitu lukea: %2",
+		"error.save_not_zip": "Tallennetut tiedot eivät ole zip: %1",
+		"error.settings_not_json": "Asetukset eivät ole JSON: %1",
+		"error.settings_not_object": "Asetukset eivät ole JSON-olio.",
+		"setting.cpu_mhz": "CPU-kello (MHz)",
+		"setting.cpu_mhz.about": "Kuinka nopeasti laitteen ARM-suoritin kulkee. Sovelluksen oma koodi kuluttaa emuloitua aikaa tällä nopeudella. Ensimmäinen iPhone ja iPhone 3G kulkivat 412 MHz:llä, 3GS ja kolmas iPod touch 600 MHz:llä ja iPad 1000 MHz:llä. touchHLE:n omat järjestelmätoiminnot eivät kuluta emuloitua aikaa. Se kuuluu koneeseen.",
+		"setting.device_family": "Laite",
+		"setting.device_family.about": "Mikä laite sovellus ajaa. Auto käyttää sovelluksen omaa valintaa, joka on iPhone, ellei sovellus ole vain iPadille. Molemmille tehty sovellus ajetaan valitussa laitteessa. Se kuuluu koneeseen, joten elokuva tarvitsee saman laitteen.",
+		"setting.orientation": "Aloitussuunta",
+		"setting.orientation.about": "Miten laitetta pidetään, kun sovellus käynnistyy. 'App' antaa touchHLE:n päättää. Se tietää, mihin suuntaan monta peliä pidetään, ja käynnistää ne siinä, ja sovellus voi myös kääntää laitteen itse. Se kuuluu koneeseen.",
+		"setting.rtc_start": "Kello käynnistyksessä",
+		"setting.rtc_start.about": "Päivämäärä, jonka laitteen kello näyttää, kun sovellus käynnistyy, sekunteina vuodesta 1970. Esimerkiksi 1262304000 on 2010-01-01, noiden sovellusten tekovuosina. Se ei voi olla aikaisempi kuin 2001-01-01, päivä josta Applen kellot lasketaan. Käynnistyksen jälkeen kello kulkee emuloidun laitteen mukana eikä koskaan tietokoneesi mukana. Se kuuluu koneeseen. Peli, joka ottaa satunnaislukunsa ajasta, toimii eri tavalla toisella päivämäärällä.",
+		"slot.game": "Sovellus",
+		"slot.game.help": "PURETTU .ipa-tiedosto iPhone OS 2.x:stä iOS 4.0:aan. App Storesta ladattu sovellus on salattu, eikä se käynnisty. touchHLE:n yhteensopivuustietokanta (appdb.touchhle.org) luettelee, mitkä sovellukset ja versiot toimivat.",
+		"slot.savedata": "Tallennetut tiedot",
+		"slot.savedata.help": "Mitä sovellus on jo tallentanut, niin kuin Emulator > Export Save Data... sen kirjoitti. Se on zip-tiedosto sovelluksen Documents- ja Library-kansioista. Ne palautetaan sovelluksen kotikansioon ennen sovelluksen alkua."
+	}
+}

@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1은(는) 이 코어가 받는 CPU 클록이 아닙니다.",
+		"error.bad_device": "'%1'은(는) 이 코어가 가진 장치 계열이 아닙니다.",
+		"error.bad_orientation": "'%1'은(는) 이 코어가 가진 방향이 아닙니다.",
+		"error.bad_rtc": "시계의 시작 시각 %1은(는) 2001년 이후의 시각이 아닙니다.",
+		"error.bundle": "앱의 번들을 읽을 수 없습니다: %1",
+		"error.bundle_not_opened": "앱의 번들을 열 수 없었습니다: %1",
+		"error.no_file": "프로젝트에 앱이 없습니다.",
+		"error.not_ipa": "'%1'은(는) .ipa 파일이 아닙니다. 이 코어는 .ipa로 묶인 iPhone OS 앱을 실행합니다.",
+		"error.not_read": "%1을(를) 읽을 수 없습니다: %2",
+		"error.save_bad_path": "세이브 데이터에 든 %1은(는) 앱의 Documents 또는 Library 폴더 아래의 파일이 아닙니다.",
+		"error.save_entry": "세이브 데이터의 %1을(를) 읽을 수 없습니다: %2",
+		"error.save_not_zip": "세이브 데이터는 zip이 아닙니다: %1",
+		"error.settings_not_json": "설정이 JSON이 아닙니다: %1",
+		"error.settings_not_object": "설정이 JSON 객체가 아닙니다.",
+		"setting.cpu_mhz": "CPU 클록(MHz)",
+		"setting.cpu_mhz.about": "기기의 ARM 프로세서가 얼마나 빠르게 도는지입니다. 앱 자체의 코드는 이 속도로 에뮬레이트된 시간을 씁니다. 처음 나온 iPhone과 iPhone 3G는 412MHz, 3GS와 3세대 iPod touch는 600MHz, iPad는 1000MHz로 돌았습니다. touchHLE가 직접 제공하는 시스템 함수는 에뮬레이트된 시간을 쓰지 않습니다. 기기의 일부입니다.",
+		"setting.device_family": "기기",
+		"setting.device_family.about": "앱이 실행되는 기기입니다. '자동'은 앱 자체의 선택을 쓰는데, 앱이 iPad 전용이 아니면 iPhone입니다. 둘 다를 위한 앱은 여기서 고른 기기에서 실행됩니다. 기기의 일부이므로 무비에는 같은 기기가 필요합니다.",
+		"setting.orientation": "시작 방향",
+		"setting.orientation.about": "앱이 시작할 때 기기를 잡는 방식입니다. '앱'은 touchHLE가 정하게 합니다. touchHLE는 많은 게임이 어느 방향으로 잡히는지 알고 그 방향으로 시작하며, 앱은 기기 자체를 돌릴 수도 있습니다. 기기의 일부입니다.",
+		"setting.rtc_start": "전원을 켤 때 시계",
+		"setting.rtc_start.about": "앱이 시작할 때 기기 시계가 보여 주는 날짜로, 1970년 이후 경과한 초입니다. 예를 들어 1262304000은 2010-01-01이며, 이 앱들이 만들어진 시기입니다. 2001-01-01보다 이를 수 없으며, 그것은 Apple의 시계가 세는 시작 날짜입니다. 시작 후 시계는 에뮬레이트된 기기와 함께 가며, 여러분의 컴퓨터와 함께 가지 않습니다. 기기의 일부입니다. 시간에서 난수를 고르는 게임은 다른 날짜에서는 다르게 작동합니다.",
+		"slot.game": "앱",
+		"slot.game.help": "iPhone OS 2.x부터 iOS 4.0까지의 복호화된 .ipa 파일입니다. App Store에서 받은 앱은 암호화되어 있어 실행되지 않습니다. touchHLE의 호환성 데이터베이스(appdb.touchhle.org)는 어떤 앱과 버전이 작동하는지 나열합니다.",
+		"slot.savedata": "세이브 데이터",
+		"slot.savedata.help": "에뮬레이터 > 세이브 데이터 내보내기...가 쓴, 앱이 이미 저장한 것입니다. 앱의 Documents 및 Library 폴더를 담은 .zip입니다. 앱이 시작되기 전에 앱의 홈 폴더로 되돌아갑니다."
+	}
+}

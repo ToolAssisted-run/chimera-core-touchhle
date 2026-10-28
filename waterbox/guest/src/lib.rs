@@ -53,6 +53,17 @@ fn core() -> &'static mut Core {
     unsafe { &mut CORE }
 }
 
+/// A text a person reads: a key of languages/en.json, each of its arguments
+/// after a 0x1F byte (chimera docs/translations.md).
+fn say(key: &str, args: &[&str]) -> String {
+    let mut out = key.to_string();
+    for arg in args {
+        out.push('\u{1f}');
+        out.push_str(arg);
+    }
+    out
+}
+
 fn fail(why: String) -> i32 {
     eprintln!("touchhle core: {why}");
     core().load_error = CString::new(why.replace('\0', " ")).unwrap().into_bytes_with_nul();
@@ -93,10 +104,10 @@ impl Settings {
         let root: Value = if json.trim().is_empty() {
             Value::Object(Default::default())
         } else {
-            serde_json::from_str(json).map_err(|e| format!("the settings are not JSON: {e}"))?
+            serde_json::from_str(json).map_err(|e| say("error.settings_not_json", &[&e.to_string()]))?
         };
         let Value::Object(map) = root else {
-            return Err("the settings are not a JSON object".to_string());
+            return Err(say("error.settings_not_object", &[]));
         };
         for (key, value) in &map {
             let text = as_text(value);
@@ -104,14 +115,14 @@ impl Settings {
                 "device_family" => match text.as_str() {
                     "auto" => {}
                     "iphone" | "ipad" => s.options.push(format!("--device-family={text}")),
-                    _ => return Err(format!("device_family: unknown value {text:?}")),
+                    _ => return Err(say("error.bad_device", &[&text])),
                 },
                 "orientation" => match text.as_str() {
                     "app" | "portrait" => {}
                     "upside-down" | "landscape-left" | "landscape-right" => {
                         s.options.push(format!("--{text}"))
                     }
-                    _ => return Err(format!("orientation: unknown value {text:?}")),
+                    _ => return Err(say("error.bad_orientation", &[&text])),
                 },
                 "rtc_start" => {
                     // not before 2001-01-01: touchHLE counts its NSDates and
@@ -120,14 +131,14 @@ impl Settings {
                         .parse::<u64>()
                         .ok()
                         .filter(|&t| t >= 978_307_200)
-                        .ok_or_else(|| format!("rtc_start: {text:?} is not a time from 2001 on"))?
+                        .ok_or_else(|| say("error.bad_rtc", &[&text]))?
                 }
                 "cpu_mhz" => {
                     let mhz: u64 = text
                         .parse()
                         .ok()
                         .filter(|&m| (1..=10_000).contains(&m))
-                        .ok_or_else(|| format!("cpu_mhz: {text:?} is not a clock"))?;
+                        .ok_or_else(|| say("error.bad_cpu", &[&text]))?;
                     s.cpu_hz = mhz * 1_000_000;
                 }
                 "appArgs" => s.app_args = text.split_whitespace().map(String::from).collect(),
@@ -146,16 +157,16 @@ impl Settings {
 /// the app's home, Documents/... and Library/....
 pub fn read_save_zip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|e| format!("not a zip: {e}"))?;
+        .map_err(|e| say("error.save_not_zip", &[&e.to_string()]))?;
     let mut out = Vec::new();
     for i in 0..zip.len() {
-        let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
+        let mut f = zip.by_index(i).map_err(|e| say("error.save_not_zip", &[&e.to_string()]))?;
         if f.is_dir() {
             continue;
         }
         let name = f.name().to_string();
         let mut data = Vec::new();
-        f.read_to_end(&mut data).map_err(|e| format!("{name}: {e}"))?;
+        f.read_to_end(&mut data).map_err(|e| say("error.save_entry", &[&name, &e.to_string()]))?;
         out.push((name, data));
     }
     out.sort_by(|a, b| a.0.cmp(&b.0));
@@ -174,7 +185,7 @@ pub fn start(
     touchHLE::time::set_epoch(std::time::Duration::from_secs(settings.rtc_start));
     touchHLE::time::set_cpu_hz(settings.cpu_hz);
     chimera::check_bundle(bundle_path)?;
-    chimera::set_save_data(save_data).map_err(|e| format!("the save data: {e}"))?;
+    chimera::set_save_data(save_data)?;
     // the app's memory exists from here on, at an address that never moves
     chimera::app_memory();
     let mut args = vec!["touchHLE".to_string(), bundle_path.to_string()];
@@ -204,7 +215,7 @@ pub fn dump_symbols(path: &str) -> Result<(), String> {
 }
 
 fn read_mount(name: &str) -> Result<Vec<u8>, String> {
-    std::fs::read(name).map_err(|e| format!("{name}: {e}"))
+    std::fs::read(name).map_err(|e| say("error.not_read", &[name, &e.to_string()]))
 }
 
 /// The first file of slot `id` in the project's slot map ("slots": a JSON
@@ -231,7 +242,7 @@ pub extern "C" fn Init() -> i32 {
         Some(n) => n,
         None => match read_mount("rom.name") {
             Ok(n) => String::from_utf8_lossy(&n).trim().to_string(),
-            Err(e) => return fail(format!("no app: {e}")),
+            Err(_) => return fail(say("error.no_file", &[])),
         },
     };
     let base = name.rsplit('/').next().unwrap_or(&name).to_string();
@@ -241,9 +252,7 @@ pub extern "C" fn Init() -> i32 {
         name
     };
     if !path.to_ascii_lowercase().ends_with(".ipa") {
-        return fail(format!(
-            "{path} is not an .ipa file: this core runs iPhone OS apps packaged as .ipa"
-        ));
+        return fail(say("error.not_ipa", &[&path]));
     }
     // What the app saved before: the .zip Export Save Data writes.
     let save_data = match slot_first("savedata") {
@@ -252,7 +261,7 @@ pub extern "C" fn Init() -> i32 {
             let zip_base = zip_name.rsplit('/').next().unwrap_or(&zip_name).to_string();
             match read_mount(&zip_base).and_then(|b| read_save_zip(&b)) {
                 Ok(files) => files,
-                Err(e) => return fail(format!("the save data {zip_base}: {e}")),
+                Err(e) => return fail(e),
             }
         }
     };

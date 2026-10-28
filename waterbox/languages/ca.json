@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 no és una velocitat de CPU que accepti aquest nucli.",
+		"error.bad_device": "'%1' no és una família de dispositius que tingui aquest nucli.",
+		"error.bad_orientation": "'%1' no és una orientació que tingui aquest nucli.",
+		"error.bad_rtc": "L'inici del rellotge, %1, no és una hora de 2001 en endavant.",
+		"error.bundle": "No es pot llegir el paquet de l'aplicació: %1",
+		"error.bundle_not_opened": "No s'ha pogut obrir el paquet de l'aplicació: %1",
+		"error.no_file": "No hi ha cap aplicació al projecte.",
+		"error.not_ipa": "'%1' no és un fitxer .ipa. Aquest nucli executa aplicacions d'iPhone OS empaquetades com a .ipa.",
+		"error.not_read": "No es pot llegir %1: %2",
+		"error.save_bad_path": "Les dades desades tenen %1, que no és un fitxer de les carpetes Documents o Library de l'aplicació.",
+		"error.save_entry": "No es pot llegir %1 de les dades desades: %2",
+		"error.save_not_zip": "Les dades desades no són un zip: %1",
+		"error.settings_not_json": "La configuració no és JSON: %1",
+		"error.settings_not_object": "La configuració no és un objecte JSON.",
+		"setting.cpu_mhz": "Velocitat de la CPU (MHz)",
+		"setting.cpu_mhz.about": "Com de ràpid funciona el processador ARM del dispositiu. El codi propi de l'aplicació consumeix temps emulat a aquesta velocitat. El primer iPhone i l'iPhone 3G funcionaven a 412 MHz, el 3GS i el tercer iPod touch a 600 MHz, i l'iPad a 1000 MHz. Les funcions del sistema que touchHLE ofereix ella mateixa no consumeixen temps emulat. Forma part de la màquina.",
+		"setting.device_family": "Dispositiu",
+		"setting.device_family.about": "En quin dispositiu funciona l'aplicació. Auto fa servir l'elecció de l'aplicació, que és l'iPhone tret que l'aplicació sigui només per a l'iPad. Una aplicació feta per a tots dos funciona en el dispositiu triat aquí. Forma part de la màquina, de manera que un moviment necessita el mateix dispositiu.",
+		"setting.orientation": "Orientació inicial",
+		"setting.orientation.about": "Com se sosté el dispositiu quan comença l'aplicació. 'App' deixa que touchHLE decideixi. Sap com se sostenen moltes aplicacions i les inicia així, i una aplicació també pot girar el dispositiu ella mateixa. Forma part de la màquina.",
+		"setting.rtc_start": "Rellotge en engegar",
+		"setting.rtc_start.about": "La data que mostra el rellotge del dispositiu quan comença l'aplicació, en segons des de 1970. Per exemple, 1262304000 és el 2010-01-01, en els anys en què es van fer aquestes aplicacions. No pot ser anterior al 2001-01-01, que és la data des de la qual compten els rellotges d'Apple. Després de l'inici el rellotge funciona amb el dispositiu emulat i mai amb el vostre ordinador. Forma part de la màquina. Un joc que agafa els seus números aleatoris de l'hora es comporta diferent amb una altra data.",
+		"slot.game": "Aplicació",
+		"slot.game.help": "Un fitxer .ipa DESXIFRAT per a iPhone OS 2.x fins a iOS 4.0. Una aplicació baixada de l'App Store està xifrada i no s'executa. La base de dades de compatibilitat de touchHLE (appdb.touchhle.org) indica quines aplicacions i versions funcionen.",
+		"slot.savedata": "Dades desades",
+		"slot.savedata.help": "Allò que l'aplicació ja havia desat, tal com ho va escriure Emulador > Exporta les dades desades... És un zip de les carpetes Documents i Library de l'aplicació. Es tornen a posar a la carpeta d'inici de l'aplicació abans que comenci."
+	}
+}

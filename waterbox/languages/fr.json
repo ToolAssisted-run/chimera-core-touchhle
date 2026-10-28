@@ -1,0 +1,30 @@
+{
+	"texts": {
+		"error.bad_cpu": "%1 n'est pas une fréquence de processeur que ce cœur accepte.",
+		"error.bad_device": "'%1' n'est pas une famille d'appareils que ce cœur possède.",
+		"error.bad_orientation": "'%1' n'est pas une orientation que ce cœur possède.",
+		"error.bad_rtc": "Le début de l'horloge, %1, n'est pas une heure à partir de 2001.",
+		"error.bundle": "Le paquet de l'application ne peut pas être lu : %1",
+		"error.bundle_not_opened": "Le paquet de l'application n'a pas pu être ouvert : %1",
+		"error.no_file": "Aucune application n'est dans le projet.",
+		"error.not_ipa": "'%1' n'est pas un fichier .ipa. Ce cœur fait tourner les applications iPhone OS empaquetées en .ipa.",
+		"error.not_read": "%1 n'a pas pu être lu : %2",
+		"error.save_bad_path": "Les données de sauvegarde contiennent %1, qui n'est pas un fichier des dossiers Documents ou Library de l'application.",
+		"error.save_entry": "L'élément %1 des données de sauvegarde n'a pas pu être lu : %2",
+		"error.save_not_zip": "Les données de sauvegarde ne sont pas un zip : %1",
+		"error.settings_not_json": "Les réglages ne sont pas du JSON : %1",
+		"error.settings_not_object": "Les réglages ne sont pas un objet JSON.",
+		"setting.cpu_mhz": "Fréquence du processeur (MHz)",
+		"setting.cpu_mhz.about": "La vitesse du processeur ARM de l'appareil. Le code de l'application consomme du temps émulé à cette vitesse. Le premier iPhone et l'iPhone 3G tournaient à 412 MHz, la 3GS et le troisième iPod touch à 600 MHz, et l'iPad à 1000 MHz. Les fonctions système que touchHLE fournit lui-même ne prennent aucun temps émulé. Elle fait partie de la machine.",
+		"setting.device_family": "Appareil",
+		"setting.device_family.about": "L'appareil sur lequel tourne l'application. « Auto » prend le choix de l'application, qui est l'iPhone sauf si l'application est pour l'iPad seulement. Une application faite pour les deux tourne sur l'appareil choisi ici. Cela fait partie de la machine : un film a donc besoin du même appareil.",
+		"setting.orientation": "Orientation au démarrage",
+		"setting.orientation.about": "La façon dont l'appareil est tenu au démarrage de l'application. 'App' laisse touchHLE décider. Il connaît le sens dans lequel beaucoup de jeux se tiennent et les démarre ainsi, et une application peut aussi tourner l'appareil elle-même. Cela fait partie de la machine.",
+		"setting.rtc_start": "Horloge à la mise sous tension",
+		"setting.rtc_start.about": "La date qu'affiche l'horloge de l'appareil au démarrage de l'application, en secondes depuis 1970. Par exemple 1262304000 correspond au 1er janvier 2010, à l'époque où ces applications ont été faites. Elle ne peut pas être antérieure au 1er janvier 2001, date à partir de laquelle comptent les horloges d'Apple. Après le démarrage, l'horloge suit l'appareil émulé, et jamais l'horloge de votre ordinateur. Elle fait partie de la machine. Un jeu qui tire ses nombres aléatoires de l'heure se joue autrement avec une autre date.",
+		"slot.game": "Application",
+		"slot.game.help": "Un fichier .ipa DÉCHIFFRÉ pour iPhone OS 2.x à iOS 4.0. Une application téléchargée depuis l'App Store est chiffrée et ne tourne pas. La base de compatibilité de touchHLE (appdb.touchhle.org) indique quelles applications et quelles versions fonctionnent.",
+		"slot.savedata": "Données de sauvegarde",
+		"slot.savedata.help": "Ce que l'application a déjà sauvegardé, tel que l'a écrit Émulateur > Exporter les données de sauvegarde... C'est un .zip des dossiers Documents et Library de l'application. Ils sont remis dans le dossier personnel de l'application avant son démarrage."
+	}
+}
