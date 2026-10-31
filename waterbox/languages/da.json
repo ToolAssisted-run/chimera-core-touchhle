@@ -23,7 +23,7 @@
 		"setting.rtc_start": "Ur ved start",
 		"setting.rtc_start.about": "Den dato, enhedens ur viser, når appen starter, i sekunder siden 1970. For eksempel er 1262304000 2010-01-01, i de år disse apps blev lavet. Den kan ikke være tidligere end 2001-01-01, som er den dato, Apples ure tæller fra. Efter starten kører uret med den emulerede enhed og aldrig med din computer. Det er en del af maskinen. Et spil, der tager sine tilfældige tal fra tiden, opfører sig anderledes med en anden dato.",
 		"slot.game": "App",
-		"slot.game.help": "En DEKRYPTERET .ipa-fil til iPhone OS 2.x til iOS 4.0. En app hentet fra App Store er krypteret og kører ikke. touchHLEs kompatibilitetsdatabase (appdb.touchhle.org) viser, hvilke apps og versioner der virker.",
+		"slot.game.help": "En DEKRYPTERET .ipa-fil til iPhone OS 2.x til iOS 4.0. En app hentet fra App Store er krypteret og kører ikke. Kompatibilitetsdatabasen for touchHLE (appdb.touchhle.org) viser, hvilke apps og versioner der virker.",
 		"slot.savedata": "Gemte data",
 		"slot.savedata.help": "Det appen allerede har gemt, sådan som Emulator > Eksportér gemte data... skrev det. Det er en .zip af appens mapper Documents og Library. De lægges tilbage i appens hjemmemappe, før appen starter."
 	}
