@@ -93,6 +93,9 @@ g++ -specs "$sr/lib/musl-gcc.specs" -mcmodel=large -fno-pic -fno-pie -fno-stack-
 	"$out/guest-syscalls.o" "$out/libgcc-builtins.o" \
 	"$mesa_target" -Wl,--start-group "$lib" $mesa_archives -Wl,--end-group \
 	-L"$sr/lib" -lstdc++ -lgcc -lgcc_eh -lc -lm
+# where the code reads its thread pointer, listed in the image: an Intel Mac
+# rewrites those reads as the core loads (miniBox's wbx-tp-rewrite.py)
+python3 "$minibox/source/guest/wbx-tp-rewrite.py" "$out/core.wbx"
 sh "$minibox/source/guest/check-wbx.sh" "$out/core.wbx"
 
 # The maths must be the core's own (guest/src/mathlib.rs), in the guest as in
