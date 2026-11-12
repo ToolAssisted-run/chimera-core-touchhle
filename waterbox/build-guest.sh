@@ -52,6 +52,10 @@ export CHIMERA_GUEST_NOTLS="$notls"
 export MINIBOX_DIR="$minibox"
 export BOOST_INCLUDEDIR="$root/extern/ext-boost"
 export CMAKE_BUILD_PARALLEL_LEVEL="$jobs"
+# CMake 4 (Ubuntu 26.04's) refuses a project that asks for a CMake older
+# than 3.5, and the openal-soft touchHLE builds asks for one; this lets it
+# configure as it always did. An older CMake ignores the variable.
+export CMAKE_POLICY_VERSION_MINIMUM="${CMAKE_POLICY_VERSION_MINIMUM:-3.5}"
 export CARGO_TARGET_DIR="$root/build/guest"
 
 ( cd "$here/guest" && cargo +nightly build --release -j "$jobs" )

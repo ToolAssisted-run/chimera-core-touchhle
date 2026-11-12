@@ -57,6 +57,10 @@ report() {
 if [ "$rebuild" = 1 ]; then
 	echo "building (the logs are in $work/)"
 	export BOOST_INCLUDEDIR="$root/extern/ext-boost"
+	# CMake 4 (Ubuntu 26.04's) refuses a project that asks for a CMake older
+	# than 3.5, and the openal-soft touchHLE builds asks for one; this lets it
+	# configure as it always did. An older CMake ignores the variable.
+	export CMAKE_POLICY_VERSION_MINIMUM="${CMAKE_POLICY_VERSION_MINIMUM:-3.5}"
 	bash "$here/setup-mesa.sh" -n -j "$jobs" > "$work/build-mesa-native.log" 2>&1 &&
 	bash "$here/setup-mesa.sh" -m "$minibox" -j "$jobs" > "$work/build-mesa-guest.log" 2>&1 &&
 	# the reference needs the patched tree too, and on a fresh clone it is
