@@ -65,7 +65,8 @@ out="$root/build/wbx"
 mkdir -p "$out"
 g++ -c -specs "$sr/lib/musl-gcc.specs" -mcmodel=large -fno-pic -fno-pie -fno-stack-protector \
 	-fcf-protection=none -O2 -nostdinc++ -I"$sr/include/c++/$gccver" \
-	-I"$sr/include/c++/$gccver/x86_64-linux-musl" -o "$out/guest-syscalls.o" "$here/guest-syscalls.cpp"
+	-I"$sr/include/c++/$gccver/x86_64-linux-musl" -I"$minibox/source/guest/include" -I"$minibox/extern/emulibc" \
+	-o "$out/guest-syscalls.o" "$here/guest-syscalls.cpp"
 gcc -c -specs "$sr/lib/musl-gcc.specs" -mcmodel=large -fno-pic -fno-pie -fno-stack-protector \
 	-O2 -o "$out/libgcc-builtins.o" "$here/guest/libgcc-builtins.c"
 
